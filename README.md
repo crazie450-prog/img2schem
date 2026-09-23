@@ -9,9 +9,24 @@ the build engine and the Claude designer come in later phases.
 
 ## Quick start
 
-```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+Windows PowerShell (5.1 has no `&&`, so one command per line):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1      # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 pip install -e ".[dev]"
+```
+
+Linux/macOS:
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Then:
+
+```bash
 
 img2schem instance list                  # instances from the vanilla launcher, CurseForge, Modrinth App, Prism
 img2schem instance use "Fabric 1.21.4"   # or launcher:name, or a path to the instance folder
