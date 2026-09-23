@@ -16,17 +16,13 @@ from pydantic import BaseModel, Field
 
 AIR = "minecraft:air"
 
-# Block properties that exist in-game but never appear in blockstate asset files (they don't change
-# the model), so the extractor cannot see them. validate_state accepts these on any block.
-ASSET_INVISIBLE_PROPERTIES = frozenset({"waterlogged", "powered", "persistent", "distance"})
-
 # Semantic labels carried per compiled cell (SOW §5.3).
 LABELS = {0: "air", 1: "wall", 2: "window", 3: "door", 4: "roof", 5: "trim", 6: "floor", 7: "base", 8: "other"}
 
 
 @dataclass
 class BlockGrid:
-    """``idx[X, Y, Z]`` indexes into ``palette``; index 0 is always ``minecraft:air``."""
+    """``idx[X, Y, Z]`` indexes into ``palette`` of ``name@meta`` blocks; index 0 is always ``minecraft:air``."""
 
     idx: np.ndarray
     palette: list[str] = field(default_factory=lambda: [AIR])
@@ -111,8 +107,6 @@ class InstanceInfo(BaseModel):
     mc_version: str | None = None
     loader: Loader = "unknown"
     loader_version: str | None = None
-    data_version: int | None = None
-    data_version_source: Literal["jar", "table", "unknown"] = "unknown"
     client_jar: str | None = None
     mods: list[ModInfo] = Field(default_factory=list)
     worldedit: bool = False
@@ -120,59 +114,29 @@ class InstanceInfo(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------- palette (Phase 0 subset of §5.3)
-
-Shape = Literal[
-    "full_cube", "column", "stairs", "slab", "wall", "fence", "fence_gate", "pane", "door", "trapdoor", "other"
-]
+# ---------------------------------------------------------------- palette
 
 
-class PaletteBlock(BaseModel):
-    id: str
-    mod: str
-    source: str
-    shape: Shape = "other"
-    properties: dict[str, list[str]] = Field(default_factory=dict)
-    default_state: str
-    flags: list[str] = Field(default_factory=list)
+class WorldPalette(BaseModel):
+    """Block registry names of one world, read from its level.dat (Forge 1.7.10 ``FML.ItemData``).
 
+    Numeric IDs are recorded for reference only; schematics store names (see stages/export_schem.py).
+    """
 
-class PaletteReport(BaseModel):
-    blocks_per_mod: dict[str, int] = Field(default_factory=dict)
-    blocks_per_shape: dict[str, int] = Field(default_factory=dict)
-    code_rendered: list[str] = Field(default_factory=list)
-    excluded_per_flag: dict[str, int] = Field(default_factory=dict)
-    parse_errors: list[dict[str, str]] = Field(default_factory=list)
+    world: str
+    level_dat: str
+    blocks: dict[str, int] = Field(default_factory=dict)  # registry name -> numeric id in that world
 
-
-class Palette(BaseModel):
-    version: int = 1
-    extractor_version: str
-    cache_key: str
-    instance_name: str | None = None
-    mc_version: str | None = None
-    blocks: dict[str, PaletteBlock] = Field(default_factory=dict)
-
-    def validate_state(self, state: str) -> str | None:
-        """Return None if ``state`` is valid for this palette, else a human-readable reason (RP.17)."""
-        from img2schem.util.blockstate import parse_state
+    def validate_block(self, block: str) -> str | None:
+        """None if ``block`` exists in this world, else a human-readable reason."""
+        from img2schem.util.block import parse_block
 
         try:
-            block_id, props = parse_state(state)
+            name, _ = parse_block(block)
         except ValueError as e:
             return str(e)
-        if block_id == AIR:
-            return None
-        blk = self.blocks.get(block_id)
-        if blk is None:
-            return f"unknown block {block_id!r} (not in the active instance's palette)"
-        for k, v in props.items():
-            if k not in blk.properties:
-                if k in ASSET_INVISIBLE_PROPERTIES:
-                    continue
-                return f"{block_id}: unknown property {k!r} (known: {sorted(blk.properties)})"
-            if v not in blk.properties[k]:
-                return f"{block_id}: {k}={v} not in {blk.properties[k]}"
+        if name != AIR and name not in self.blocks:
+            return f"unknown block {name!r} (not registered in world {self.world!r})"
         return None
 
 

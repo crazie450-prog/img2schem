@@ -1,10 +1,11 @@
-"""`img2schem` command line (SOW §5.2). Phase 0 commands: instance, palette build, inspect, preview,
-validate, doctor."""
+"""`img2schem` command line (SOW §5.2, re-scoped for GTNH / 1.7.10 in docs/SOW_GTNH.md).
+Phase 0 commands: instance, world, inspect, preview, validate, doctor."""
 
 from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 import typer
@@ -13,17 +14,19 @@ from rich.table import Table
 
 from img2schem.config import load_settings, save_user_setting, user_config_path
 from img2schem.instance.discover import discover_all, resolve_instance
-from img2schem.models import InstanceInfo, Palette
-from img2schem.stages.export_schem import mods_required, read_schem
+from img2schem.instance.world import list_worlds, read_world_palette, resolve_world
+from img2schem.models import BlockGrid, InstanceInfo, WorldPalette
+from img2schem.stages.export_schem import SchemInfo, mods_required, read_schematic
+from img2schem.util.block import namespace
 
 EXIT_VALIDATION = 2
 EXIT_BAD_INPUT = 4
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 instance_app = typer.Typer(no_args_is_help=True, help="Discover and select Minecraft instances.")
-palette_app = typer.Typer(no_args_is_help=True, help="Extract the block palette from an instance.")
+world_app = typer.Typer(no_args_is_help=True, help="Select the world whose block registry validates builds.")
 app.add_typer(instance_app, name="instance")
-app.add_typer(palette_app, name="palette")
+app.add_typer(world_app, name="world")
 console = Console()
 err = Console(stderr=True)
 
@@ -45,14 +48,16 @@ def _active_instance(ref: str | None) -> InstanceInfo:
         raise _fail(str(e)) from None
 
 
-def _active_palette(ref: str | None) -> Palette | None:
-    """The active instance's palette (cache hit after the first build), or None if no instance is set."""
-    from img2schem.palette.build import build_palette
-
-    if not (ref or load_settings().instance):
+def _active_palette(world: str | None = None) -> WorldPalette | None:
+    """Block registry of the selected world, or None if no world is selected."""
+    s = load_settings()
+    ref = world or s.world
+    if not ref:
         return None
-    palette, _, _ = build_palette(_active_instance(ref), load_settings().cache_path)
-    return palette
+    try:
+        return read_world_palette(resolve_world(Path(_active_instance(None).game_dir), ref))
+    except (LookupError, ValueError, OSError) as e:
+        raise _fail(str(e)) from None
 
 
 # ---------------------------------------------------------------- instance
@@ -60,7 +65,7 @@ def _active_palette(ref: str | None) -> Palette | None:
 
 @instance_app.command("list")
 def instance_list(as_json: bool = JsonOpt) -> None:
-    """Discovered instances: name, launcher, MC version, loader, DataVersion, mod count."""
+    """Discovered instances: name, launcher, MC version, loader, mod count, WorldEdit."""
     found = discover_all()
     if as_json:
         print(json.dumps([i.model_dump() for i in found], indent=1))
@@ -68,15 +73,13 @@ def instance_list(as_json: bool = JsonOpt) -> None:
     if not found:
         console.print("No instances found. Use `img2schem instance use PATH` with your instance folder.")
         return
-    t = Table("launcher:name", "MC", "loader", "DataVersion", "mods", "WorldEdit", "warnings")
+    t = Table("launcher:name", "MC", "loader", "mods", "WorldEdit", "warnings")
     for i in found:
-        dv = f"{i.data_version} ({i.data_version_source})" if i.data_version else "?"
         loader = f"{i.loader} {i.loader_version or ''}".strip()
         t.add_row(
             f"{i.launcher}:{i.name}",
             i.mc_version or "?",
             loader,
-            dv,
             str(len(i.mods)),
             "yes" if i.worldedit else "no",
             "; ".join(i.warnings),
@@ -101,75 +104,80 @@ def instance_use(ref: str = typer.Argument(..., help="Instance name, launcher:na
         console.print(f"[yellow]warning:[/yellow] {w}")
 
 
-# ---------------------------------------------------------------- palette
+# ---------------------------------------------------------------- world
 
 
-@palette_app.command("build")
-def palette_build(
-    instance: str | None = typer.Option(None, "--instance", help="Name or path; default: active instance."),
-    force: bool = typer.Option(False, "--force"),
-    as_json: bool = JsonOpt,
-) -> None:
-    """Extract blocks, properties and shapes from the instance (Phase 0 subset of RP.1–RP.17)."""
-    from img2schem.palette.build import build_palette
+@world_app.command("list")
+def world_list() -> None:
+    """Worlds (saves) of the active instance."""
+    inst = _active_instance(None)
+    worlds = list_worlds(Path(inst.game_dir))
+    if not worlds:
+        console.print(f"No worlds in {Path(inst.game_dir) / 'saves'}. Create one in game first.")
+    for w in worlds:
+        console.print(w.name)
 
-    info = _active_instance(instance)
-    if not info.client_jar:
-        raise _fail(f"vanilla client jar for {info.mc_version} not found; launch that version once (RI.3)")
-    palette, d, hit = build_palette(info, load_settings().cache_path, force=force)
-    report = json.loads((d / "palette_report.json").read_text(encoding="utf-8"))
-    if as_json:
-        print(json.dumps({"dir": str(d), "cache_hit": hit, "blocks": len(palette.blocks), **report}, indent=1))
-        return
-    console.print(f"{'Cache hit' if hit else 'Built'}: {len(palette.blocks)} blocks -> {d}")
+
+@world_app.command("use")
+def world_use(ref: str = typer.Argument(..., help="Save folder name, or a path to a world folder.")) -> None:
+    """Select the world whose block registry (level.dat) validates builds; prints blocks per mod."""
+    inst = _active_instance(None)
+    try:
+        world_dir = resolve_world(Path(inst.game_dir), ref)
+        pal = read_world_palette(world_dir)
+    except (LookupError, ValueError, OSError) as e:
+        raise _fail(str(e)) from None
+    save_user_setting("world", str(world_dir.resolve()))
+    console.print(f"Active world: [bold]{world_dir.name}[/bold]: {len(pal.blocks)} registered blocks")
     t = Table("mod", "blocks")
-    for mod, n in report["blocks_per_mod"].items():
+    for mod, n in sorted(Counter(namespace(b) for b in pal.blocks).items(), key=lambda kv: -kv[1]):
         t.add_row(mod, str(n))
     console.print(t)
-    console.print("shapes: " + ", ".join(f"{k}={v}" for k, v in report["blocks_per_shape"].items()))
-    console.print(f"code_rendered: {len(report['code_rendered'])}   parse errors: {len(report['parse_errors'])}")
 
 
 # ---------------------------------------------------------------- files
 
 
-def _load_schem(path: Path):  # type: ignore[no-untyped-def]
+def _load(path: Path) -> tuple[BlockGrid, SchemInfo]:
     try:
-        return read_schem(path)
+        return read_schematic(path)
     except (OSError, ValueError, KeyError, TypeError) as e:
         raise _fail(f"cannot read {path}: {e}", EXIT_VALIDATION) from None
 
 
 @app.command()
 def inspect(file: Path, as_json: bool = JsonOpt) -> None:
-    """Dims, palette, counts, DataVersion and mods required of a .schem."""
-    grid, info = _load_schem(file)
-    counts = grid.counts()
+    """Dims, blocks, counts and mods required of a .schematic."""
+    grid, info = _load(file)
     summary = {
         "file": str(file),
-        "sponge_version": info.version,
-        "data_version": info.data_version,
         "dims_wxhxl": list(grid.shape),
-        "offset": list(info.offset),
-        "we_offset": list(info.we_offset) if info.we_offset else None,
+        "we_offset": list(info.offset) if info.offset else None,
+        "we_origin": list(info.origin) if info.origin else None,
+        "names_mapped": info.mapped,
         "nonair": grid.nonair(),
         "palette_size": len(grid.palette),
         "mods_required": mods_required(grid.palette),
-        "block_entities": info.block_entities,
-        "counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
-        "metadata": info.metadata,
+        "tile_entities": info.tile_entities,
+        "entities": info.entities,
+        "counts": dict(sorted(grid.counts().items(), key=lambda kv: -kv[1])),
+        "img2schem": info.img2schem,
     }
     if as_json:
         print(json.dumps(summary, indent=1, default=str))
         return
     w, h, length = grid.shape
-    console.print(f"[bold]{file.name}[/bold]  Sponge v{info.version}  DataVersion {info.data_version}")
-    console.print(f"size W×H×L = {w}×{h}×{length}  offset {info.offset}  WEOffset {info.we_offset}")
-    console.print(f"non-air {grid.nonair()}  palette {len(grid.palette)}  block entities {info.block_entities}")
-    console.print(f"mods required: {', '.join(summary['mods_required']) or 'none (vanilla)'}")
-    t = Table("block state", "count")
-    for state, n in summary["counts"].items():  # type: ignore[union-attr]
-        t.add_row(state, str(n))
+    console.print(f"[bold]{file.name}[/bold]  W×H×L = {w}×{h}×{length}  WEOffset {info.offset}  WEOrigin {info.origin}")
+    console.print(
+        f"non-air {grid.nonair()}  distinct blocks {len(grid.palette) - 1}  "
+        f"tile entities {info.tile_entities}  entities {info.entities}"
+    )
+    if not info.mapped:
+        console.print("[yellow]no SchematicaMapping: blocks shown as numeric ids (id:<n>)[/yellow]")
+    console.print(f"mods required: {', '.join(summary['mods_required']) or 'none (vanilla)'}")  # type: ignore[arg-type]
+    t = Table("block (name@meta)", "count")
+    for block, n in summary["counts"].items():  # type: ignore[union-attr]
+        t.add_row(block, str(n))
     console.print(t)
 
 
@@ -179,10 +187,10 @@ def preview(
     out: Path = typer.Option(None, "--out", help="Output directory (default: next to the file)."),
     px: int = typer.Option(8, "--px", help="Pixels per block (>= 8)."),
 ) -> None:
-    """Render front/side/top/iso preview PNGs from a .schem."""
+    """Render front/side/top/iso preview PNGs from a .schematic."""
     from img2schem.stages.preview import write_previews
 
-    grid, _ = _load_schem(file)
+    grid, _ = _load(file)
     for p in write_previews(grid, out or file.parent, px=max(px, 8)):
         console.print(str(p))
 
@@ -191,18 +199,18 @@ def preview(
 def validate(
     file: Path,
     strict: bool = typer.Option(False, "--strict", help="Warnings fail too."),
-    instance: str | None = typer.Option(None, "--instance"),
+    world: str | None = typer.Option(None, "--world", help="Save name or path; default: active world."),
     allow_large: bool = typer.Option(False, "--allow-large"),
     as_json: bool = JsonOpt,
 ) -> None:
     """Structural checks (R10.1, R10.1b, R10.2). Exit 2 on failure."""
     from img2schem.stages.validate import failed, validate_grid
 
-    grid, _ = _load_schem(file)
-    palette = _active_palette(instance)
+    grid, _ = _load(file)
+    palette = _active_palette(world)
     issues = validate_grid(grid, load_settings().budgets, palette, allow_large=allow_large)
     if palette is None:
-        err.print("[yellow]warning:[/yellow] no active instance; skipping palette checks (R10.1b)")
+        err.print("[yellow]warning:[/yellow] no world selected; skipping block-name checks (R10.1b)")
     ok = not failed(issues, strict)
     if as_json:
         print(json.dumps({"ok": ok, "issues": [i.model_dump() for i in issues]}, indent=1))
@@ -217,39 +225,40 @@ def validate(
 
 @app.command()
 def doctor() -> None:
-    """Check API key, active instance, client jar, WorldEdit and its schematics folder."""
+    """Check the active instance, WorldEdit, its schematics folder and the selected world."""
     s = load_settings()
-    ok = True
 
     def line(good: bool, msg: str) -> None:
-        nonlocal ok
-        ok &= good
         console.print(("[green]✓[/green] " if good else "[red]✗[/red] ") + msg)
 
     console.print(f"config: {user_config_path()}")
-    line(
-        bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "ANTHROPIC_API_KEY set"
-        if os.environ.get("ANTHROPIC_API_KEY")
-        else "ANTHROPIC_API_KEY not set (needed from Phase 2; template builds work without it)",
-    )
+    key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    line(key, "ANTHROPIC_API_KEY set" if key else "ANTHROPIC_API_KEY not set (needed from Phase 2)")
     if not s.instance:
         line(False, "no active instance (`img2schem instance use NAME`)")
-        raise typer.Exit(0)
+        return
     try:
         i = resolve_instance(s.instance)
     except LookupError as e:
         line(False, str(e))
-        raise typer.Exit(0) from None
+        return
     line(
         True,
         f"instance {i.launcher}:{i.name}: MC {i.mc_version}, {i.loader} {i.loader_version or ''}, {len(i.mods)} mods",
     )
-    line(i.client_jar is not None, f"client jar: {i.client_jar or 'not found (launch the version once)'}")
-    line(i.data_version is not None, f"DataVersion: {i.data_version} ({i.data_version_source})")
+    line(i.mc_version == "1.7.10", f"Minecraft {i.mc_version} (img2schem targets 1.7.10 / GTNH)")
     line(i.worldedit, "WorldEdit mod installed" if i.worldedit else "WorldEdit mod not found in mods/")
     sd = Path(i.schematics_dir) if i.schematics_dir else None
-    line(bool(sd and sd.is_dir()), f"schematics folder: {sd}" + ("" if sd and sd.is_dir() else " (missing)"))
+    ok_sd = bool(sd and sd.is_dir())
+    line(ok_sd, f"schematics folder: {sd}" + ("" if ok_sd else " (missing; created on first export)"))
+    if s.world:
+        try:
+            pal = read_world_palette(resolve_world(Path(i.game_dir), s.world))
+            line(True, f"world {pal.world}: {len(pal.blocks)} registered blocks")
+        except (LookupError, ValueError, OSError) as e:
+            line(False, f"world: {e}")
+    else:
+        line(False, "no world selected (`img2schem world list`, then `img2schem world use NAME`)")
     for w in i.warnings:
         console.print(f"[yellow]warning:[/yellow] {w}")
 

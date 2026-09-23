@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "img2schem"
 version = "0.0.1"
-description = "Photo or description of a building -> Claude-designed build -> WorldEdit .schem, using your installed (modded) block palette"
+description = "Photo or description of a building -> Claude-designed build -> WorldEdit .schematic for GT New Horizons (Minecraft 1.7.10)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary; personal use" }
@@ -30,8 +30,6 @@ img2schem = "img2schem.cli:app"
 [tool.setuptools.packages.find]
 include = ["img2schem*"]
 
-[tool.setuptools.package-data]
-"img2schem.palette" = ["data/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

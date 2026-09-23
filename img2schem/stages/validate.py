@@ -1,6 +1,6 @@
-"""S5 validator, Phase 0 structural rules: R10.1 (states parse), R10.1b (states exist in the active
-palette, no flagged blocks), R10.2 (budgets). File-level R10.1 failures are raised by the reader and
-reported by the caller. The remaining §6.12 rules and auto-fixes land in Phase 1.
+"""S5 validator, Phase 0 structural rules: R10.1 (blocks parse), R10.1b (blocks exist in the selected
+world's registry), R10.2 (budgets). File-level R10.1 failures are raised by the reader and reported by the
+caller. The remaining §6.12 rules and auto-fixes land in Phase 1.
 """
 
 from __future__ import annotations
@@ -9,17 +9,14 @@ import json
 from pathlib import Path
 
 from img2schem.config import Budgets
-from img2schem.models import AIR, BlockGrid, Issue, Palette
-from img2schem.util.blockstate import parse_state
-
-DEFAULT_EXCLUDE_FLAGS = ("utility", "gravity", "block_entity", "code_rendered")
+from img2schem.models import AIR, BlockGrid, Issue, WorldPalette
+from img2schem.util.block import parse_block
 
 
 def validate_grid(
     grid: BlockGrid,
     budgets: Budgets,
-    palette: Palette | None = None,
-    exclude_flags: tuple[str, ...] = DEFAULT_EXCLUDE_FLAGS,
+    palette: WorldPalette | None = None,
     allow_large: bool = False,
 ) -> list[Issue]:
     issues: list[Issue] = []
@@ -27,29 +24,16 @@ def validate_grid(
         issues.append(Issue(rule="R10.1", severity="error", message="block index out of palette range"))
 
     used = {int(i) for i in set(grid.idx.reshape(-1).tolist())}
-    for i, state in enumerate(grid.palette):
-        if i not in used or state == AIR:
+    for i, block in enumerate(grid.palette):
+        if i not in used or block == AIR:
             continue
         try:
-            block_id, _ = parse_state(state)
+            parse_block(block)
         except ValueError as e:
             issues.append(Issue(rule="R10.1", severity="error", message=str(e)))
             continue
-        if palette is None:
-            continue
-        reason = palette.validate_state(state)
-        if reason:
+        if palette is not None and (reason := palette.validate_block(block)):
             issues.append(Issue(rule="R10.1b", severity="error", message=reason))
-            continue
-        flags = set(palette.blocks[block_id].flags) & set(exclude_flags)
-        if flags:
-            issues.append(
-                Issue(
-                    rule="R10.1b",
-                    severity="error",
-                    message=f"{block_id} is flagged {sorted(flags)} and excluded by default",
-                )
-            )
 
     dims = grid.shape
     if max(dims) > budgets.max_dim:
@@ -69,7 +53,9 @@ def validate_grid(
     if total > budgets.hard_max_total and not allow_large:
         issues.append(
             Issue(
-                rule="R10.2", severity="error", message=f"{total} cells exceed hard_max_total {budgets.hard_max_total}"
+                rule="R10.2",
+                severity="error",
+                message=f"{total} cells exceed hard_max_total {budgets.hard_max_total}",
             )
         )
     return issues

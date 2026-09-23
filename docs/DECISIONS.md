@@ -5,7 +5,7 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 
 ## 2026-09-23 · Phase 0
 
-### D-001 Sponge Offset and WEOffset (verify)
+### D-001 Sponge Offset and WEOffset — superseded by D-010
 - **Context:** §4.3 wants the bottom-center of the front facade 2 blocks south of the player. From WorldEdit's
   Sponge readers as we understand them: v2 uses `Metadata.WEOffsetX/Y/Z` (when present) as the region's
   min corner relative to the player, and v3 uses `Offset` for the same thing.
@@ -14,7 +14,7 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Consequences:** needs checking on the modded single-player bed and on Paper + FAWE / Paper + WE (TEST_BED.md).
   If a bed disagrees, flip the constant there and record the result here.
 
-### D-002 Partial block states (verify)
+### D-002 Partial block states — obsolete (1.7.10 has no block states, D-009)
 - **Context:** RE.4: only properties the block has are written; others take in-game defaults. Phase 0 must
   confirm that WorldEdit accepts partial states.
 - **Decision:** `PaletteBlock.default_state` is the bare id; the test grids use partial states on purpose
@@ -22,6 +22,7 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Consequences:** if a bed rejects them, add a defaults-inference step (RE.4) and record it here.
 
 ### D-003 Launcher paths and metadata (verify)
+- **Update:** confirmed on the owner's machine for Prism: GTNH found with MC 1.7.10 and Forge 10.13.4.1614.
 - **Context:** RI.1 asks to verify each launcher's paths and metadata files on the owner's machine.
 - **Decision:** best-known defaults in `instance/discover.py`: vanilla `%APPDATA%\.minecraft` +
   `launcher_profiles.json`; CurseForge `%USERPROFILE%\curseforge\minecraft\Instances\*\minecraftinstance.json`
@@ -38,7 +39,7 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   overridden by `./config.yaml`, then `IMG2SCHEM_*` env vars (`IMG2SCHEM_CONFIG` points at another file).
 - **Consequences:** a project-local `config.yaml` can pin settings per checkout.
 
-### D-005 validate_state accepts asset-invisible properties
+### D-005 validate_state accepts asset-invisible properties — obsolete (D-009)
 - **Context:** RP.17 says every property/value must be in `properties`, but some real properties
   (`waterlogged`, `powered`, `persistent`, `distance`) never appear in blockstate files because they don't
   change the model, so the extractor can't see them.
@@ -46,19 +47,64 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Consequences:** a wrong `waterlogged` on a block that lacks it would pass validation. The Phase 5 helper
   mod (O2) removes the guesswork.
 
-### D-006 Resource packs override, never add, blocks
+### D-006 Resource packs override, never add, blocks — obsolete (D-009)
 - **Context:** RP.3 treats every blockstate file as a block, but a resource pack can ship blockstates for
   blocks that aren't registered.
 - **Decision:** candidate blocks come only from the vanilla jar and mod jars; resource packs only override
   their blockstates, models and textures.
 
-### D-007 Byte-identical schematics
+### D-007 Byte-identical schematics (still applies; there is no Date field any more)
 - **Context:** S5 requires identical bytes for identical input, but gzip headers carry a timestamp and file
   name, and R8.9 metadata carries a `Date`.
 - **Decision:** gzip with `mtime=0` and no file name; `SchemMeta.date_ms` pins `Date` (defaults to now).
 - **Consequences:** golden tests must pass a fixed `date_ms`.
 
-### D-008 Module layout additions
+### D-008 Module layout additions — superseded by D-013
 - **Decision:** `palette/build.py` orchestrates extraction and caching (not listed in §5.1);
   `Palette.validate_state` lives on the model until `palette/query.py` arrives in Phase 1;
   `util/blockstate.py` parses state strings. Phase 0 previews use a flat per-block hash color (§7 Phase 0 task 4).
+
+## 2026-09-23 · Re-scope for GT New Horizons
+
+### D-009 Target GTNH 1.7.10 (owner decision)
+- **Context:** the owner's instance is GT New Horizons 2.9.0: Minecraft 1.7.10, Forge 10.13.4.1614, 251 mods,
+  WorldEdit 6.3.0. The SOW assumed Minecraft 1.13+.
+- **Decision:** re-scope the project to GTNH / 1.7.10; `docs/SOW_GTNH.md` governs over `docs/SOW.md`.
+- **Consequences:** Sponge `.schem`, DataVersion and blockstate-JSON palette extraction are gone; the palette
+  source for colors and shapes is open (SOW_GTNH Q1).
+
+### D-010 `.schematic` layout taken from the WorldEdit 6.3.0 jar, with SchematicaMapping
+- **Context:** GTNH's WorldEdit 6.3.0 (the owner's jar, built 2024-07-16) reads only MCEdit `.schematic`. Its
+  Forge side registers `RemappingBlockIOFactory` + `ForgeMappingProvider`: on save it writes file-local IDs
+  plus a `SchematicaMapping` (name → local ID) and Schematica's AddBlocks nibble order (even cells in the
+  high nibble); on load it maps names to the current world's IDs (unknown names → air, with a warning).
+  Without a mapping, IDs are used as-is with classic WorldEdit nibble order.
+- **Decision:** always write `SchematicaMapping` with local IDs (air 0, then 1..N), `Blocks`/`Data`/`AddBlocks`,
+  `WEOrigin = 0` and `WEOffset = [-(W//2), 0, 2]` (WorldEdit pastes the min corner at player + WEOffset).
+- **Verification:** `WeCheck` harness (not committed; it needs the WorldEdit jar) ran the jar's own
+  `RemappingBlockIOFactory` serializer/deserializer against our writer/reader in both directions, with
+  50–2000 distinct blocks and world IDs different from file IDs: every cell matched.
+- **Consequences:** files don't depend on a world's numeric IDs. At most 4095 distinct block names per file.
+  Offset/orientation still need the in-game check (TEST_BED.md).
+
+### D-011 Blocks are written `modid:name@meta`
+- **Decision:** a block is its Forge registry name plus metadata 0–15, written `name@meta` (`@0` omitted),
+  e.g. `minecraft:wool@14`, `gregtech:gt.blockcasings@5`. Names may contain upper case and dots.
+
+### D-012 Valid block names come from the world's level.dat
+- **Context:** 1.7.10 blocks have no blockstate/model files, so jars can't tell us which blocks exist. Forge
+  stores every registered block in `level.dat` → `FML.ItemData` (`\u0001` prefix = block, `\u0002` = item).
+- **Decision:** `img2schem world use NAME` selects a world; validation (R10.1b) checks names against its
+  registry. Colors/shapes are Q1 in SOW_GTNH.md.
+- **Consequences:** the owner must create a world (e.g. `img2schem-test`) before validating builds.
+  The exact level.dat layout is from Forge 1.7.10 as documented; confirm with `world use` on the real world.
+
+### D-013 Removed the modern-only code
+- **Decision:** deleted the Sponge writer/reader, blockstate/model palette extraction, `dataversions.yaml`
+  varints and the `palette build` command (last present in commit fde8606 if a modern target is ever wanted).
+  Added `util/block.py`, `instance/world.py`, the MCEdit `stages/export_schem.py`, and `world list/use`.
+
+### D-014 1.7.10 orientation metadata in the test grids (verify)
+- **Decision:** stairs `0/1/2/3` ascend east/west/south/north, `+4` upside-down (from `BlockStairs` placement
+  logic); `wooden_door` lower half `0–3` = east/south/west/north, upper half `8` (hinge left).
+- **Consequences:** the engine (Phase 1) will use the same tables; the in-game paste confirms them.

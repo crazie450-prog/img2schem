@@ -28,6 +28,7 @@ class ExportSettings(BaseModel):
 
 class Settings(BaseModel):
     instance: str | None = None
+    world: str | None = None  # save folder name or path; its level.dat lists the valid block names
     schem_version: int = 2
     budgets: Budgets = Field(default_factory=Budgets)
     export: ExportSettings = Field(default_factory=ExportSettings)
@@ -66,7 +67,11 @@ def load_settings() -> Settings:
     data: dict[str, Any] = {}
     for p in (user_config_path(), Path("config.yaml")):
         data = _deep_merge(data, _read_yaml(p))
-    for key, field in (("IMG2SCHEM_INSTANCE", "instance"), ("IMG2SCHEM_CACHE_DIR", "cache_dir")):
+    for key, field in (
+        ("IMG2SCHEM_INSTANCE", "instance"),
+        ("IMG2SCHEM_WORLD", "world"),
+        ("IMG2SCHEM_CACHE_DIR", "cache_dir"),
+    ):
         if key in os.environ:
             data[field] = os.environ[key]
     return Settings.model_validate(data)

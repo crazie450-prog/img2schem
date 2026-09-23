@@ -1,43 +1,30 @@
 import numpy as np
 
 from img2schem.config import Budgets
-from img2schem.instance.discover import discover_vanilla
-from img2schem.models import BlockGrid
-from img2schem.palette.build import extract
+from img2schem.models import BlockGrid, WorldPalette
 from img2schem.stages.validate import failed, validate_grid
 
-
-def _palette(launchers):
-    inst = next(i for i in discover_vanilla(launchers["vanilla"][0]) if i.loader == "fabric")
-    return extract(inst)[0]
+PAL = WorldPalette(world="w", level_dat="-", blocks={"minecraft:stone": 1, "chisel:marble_stairs.0": 2052})
 
 
-def test_clean_grid_passes(launchers):
+def test_clean_grid_passes():
     g = BlockGrid.empty(3, 3, 3)
-    g.fill((0, 0, 0), (2, 0, 2), "minecraft:bricks")
-    g.set(1, 1, 0, "fabdeco:slate_shingle_stairs[facing=north,half=bottom,shape=straight]")
-    assert validate_grid(g, Budgets(), _palette(launchers)) == []
+    g.fill((0, 0, 0), (2, 0, 2), "minecraft:stone")
+    g.set(1, 1, 0, "chisel:marble_stairs.0@6")
+    assert validate_grid(g, Budgets(), PAL) == []
 
 
-def test_unknown_block_and_bad_state(launchers):
-    g = BlockGrid.empty(2, 1, 1)
-    g.set(0, 0, 0, "create:andesite_casing")
-    g.set(1, 0, 0, "minecraft:oak_stairs[facing=up]")
-    issues = validate_grid(g, Budgets(), _palette(launchers))
-    assert [i.rule for i in issues] == ["R10.1b", "R10.1b"] and failed(issues)
+def test_unknown_block():
+    g = BlockGrid.empty(1, 1, 1)
+    g.set(0, 0, 0, "gregtech:nothing@2")
+    (issue,) = validate_grid(g, Budgets(), PAL)
+    assert issue.rule == "R10.1b" and failed([issue])
 
 
-def test_malformed_state_without_palette():
-    g = BlockGrid(np.array([[[1]]]), ["minecraft:air", "Stone"])
+def test_malformed_without_palette():
+    g = BlockGrid(np.array([[[1]]]), ["minecraft:air", "stone@3"])
     (issue,) = validate_grid(g, Budgets())
     assert issue.rule == "R10.1" and issue.severity == "error"
-
-
-def test_flagged_block(launchers):
-    g = BlockGrid.empty(1, 1, 1)
-    g.set(0, 0, 0, "minecraft:chest[facing=north]")
-    (issue,) = validate_grid(g, Budgets(), _palette(launchers))
-    assert "code_rendered" in issue.message
 
 
 def test_budgets():

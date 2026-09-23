@@ -1,6 +1,6 @@
 """S7 previews (R9.1, Phase 0 subset): orthographic front/side/top + isometric PNGs, PIL only.
 
-Phase 0 colors each block id with a flat hash color; palette face colors replace this in Phase 1.
+Phase 0 colors each block with a flat hash color; real block colors replace this in Phase 1.
 Views follow the in-game orientation (SOW §4.3):
   front: seen from the north (-Z) looking south, so east (+X) is on the image's LEFT;
   side:  seen from the west (-X) looking east, so south (+Z) is on the RIGHT;
@@ -17,18 +17,14 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from img2schem.models import BlockGrid
-from img2schem.util.blockstate import parse_state
 
 BG = (246, 246, 244)
 SHADE = {"top": 1.0, "front": 0.85, "side": 0.7}
 
 
-def block_color(state: str) -> tuple[int, int, int]:
-    try:
-        block_id, _ = parse_state(state)
-    except ValueError:
-        block_id = state
-    d = hashlib.md5(block_id.encode()).digest()
+def block_color(block: str) -> tuple[int, int, int]:
+    """Flat color per block name and metadata (``minecraft:wool@0`` and ``@14`` differ)."""
+    d = hashlib.md5(block.encode()).digest()
     # Pull toward mid-gray so hash colors stay readable.
     return tuple(int(60 + b * 0.6) for b in d[:3])  # type: ignore[return-value]
 

@@ -1,7 +1,0 @@
-# Fallback mc_version -> DataVersion (R8.4). Primary source is version.json "world_version" in the client jar.
-# Verify against the Minecraft Wiki "Data version" page before relying on a new entry.
-"1.20.1": 3465
-"1.20.4": 3700
-"1.21": 3953
-"1.21.1": 3955
-"1.21.4": 4189

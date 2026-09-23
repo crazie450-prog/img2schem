@@ -1,11 +1,12 @@
 # img2schem
 
-Photo (or text description) of a building → a designed Minecraft build → a WorldEdit `.schem`
-(Java Edition), using only the blocks in **your installed instance, including mods**.
+Photo (or text description) of a building → a designed Minecraft build → a WorldEdit `.schematic` for
+**GT New Horizons (Minecraft 1.7.10, WorldEdit 6.3.0)**, using the blocks registered in your world,
+including mods.
 
-The full spec and plan is [docs/SOW.md](docs/SOW.md). **Status: Phase 0** (output end: instance discovery,
-a minimal palette, the Sponge `.schem` writer/reader, previews, structural validation). Photo analysis,
-the build engine and the Claude designer come in later phases.
+The spec is [docs/SOW.md](docs/SOW.md), re-scoped for GTNH by [docs/SOW_GTNH.md](docs/SOW_GTNH.md).
+**Status: Phase 0** (instance and world detection, the `.schematic` writer/reader, previews, structural
+validation). Photo analysis, the build engine and the Claude designer come in later phases.
 
 ## Quick start
 
@@ -27,16 +28,16 @@ pip install -e ".[dev]"
 Then:
 
 ```bash
-
-img2schem instance list                  # instances from the vanilla launcher, CurseForge, Modrinth App, Prism
-img2schem instance use "Fabric 1.21.4"   # or launcher:name, or a path to the instance folder
-img2schem doctor                         # client jar, DataVersion, WorldEdit, schematics folder
-img2schem palette build                  # blocks, properties, shapes -> ~/.cache/img2schem/palettes/<hash>/
+img2schem instance list                  # instances from Prism, CurseForge, Modrinth App, vanilla launcher
+img2schem instance use "<name>"          # or launcher:name, or a path to the instance folder
+img2schem world list                     # worlds of that instance
+img2schem world use img2schem-test       # its level.dat lists the valid block names
+img2schem doctor                         # WorldEdit, schematics folder, world
 
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
-img2schem inspect  some.schem            # dims, palette, counts, DataVersion, mods required
-img2schem preview  some.schem --out out/prev
-img2schem validate some.schem [--strict]
+img2schem inspect  some.schematic        # size, blocks, counts, mods required
+img2schem preview  some.schematic --out out/prev
+img2schem validate some.schematic [--strict]
 ```
 
 In game: `//schem load <name>`, stand where the build should go **facing south**, `//paste -a`.
