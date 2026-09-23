@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "img2schem"
+version = "0.0.1"
+description = "Photo or description of a building -> Claude-designed build -> WorldEdit .schem, using your installed (modded) block palette"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary; personal use" }
+dependencies = [
+    "numpy>=1.26",
+    "Pillow>=10",
+    "pydantic>=2.5",
+    "pyyaml>=6",
+    "typer>=0.12",
+    "rich>=13",
+    "nbtlib>=2.0",
+]
+
+[project.optional-dependencies]
+vlm = ["anthropic"]
+server = ["fastapi", "uvicorn"]
+dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
+
+[project.scripts]
+img2schem = "img2schem.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["img2schem*"]
+
+[tool.setuptools.package-data]
+"img2schem.palette" = ["data/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "replay: replays recorded Claude sessions (no network)",
+    "integration: end-to-end runs on fixtures",
+    "external: live API / real instance; needs IMG2SCHEM_RUN_EXTERNAL=1",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B008"]  # typer.Option defaults are the idiomatic typer style
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
