@@ -1,4 +1,39 @@
-# CLAUDE.md
+# img2schem
+
+Photo/description → Claude-designed build (ops) → deterministic engine → WorldEdit `.schem` (Minecraft Java),
+using the owner's real installed palette including mods. Python 3.11+ core, CLI-first; local web UI from Phase 3.
+
+## Read first
+- docs/SOW.md — full spec and phased plan. Follow §0 rules and §7 phase gates.
+- docs/DSL.md — the ops language (also Claude's system-prompt reference). Change ops only via engine/ops.py.
+- docs/DECISIONS.md — log every deviation from the SOW (context → decision → consequences).
+- docs/archive/SOW_v1.0.md — earlier plan; referenced for kept requirements (R-IDs) and tiers.
+
+## Conventions
+- Arrays are [X, Y, Z], Y up; front facade at z=0 facing −Z (north). SOW §4.3.
+- Every stage writes an artifact to the run dir and can be re-run from the previous artifact. The UI calls the same stages.
+- Block states are modern strings. Never numeric IDs. Never legacy `.schematic`.
+- Block IDs come only from the extracted palette (active instance) or palette/data/tiers.yaml. Never hard-code others.
+- Claude writes ops, not blocks (`set` capped). Tool schemas are generated from engine/ops.py.
+- Model IDs and prices live in config.yaml / pricing.yaml only.
+- Secrets only via env vars. Never commit .env, extracted textures, atlases, or owner photos > 1 MB.
+
+## Commands
+- `pip install -e ".[dev,vlm,server]"`; `pytest -q`; `pytest -m replay`; `ruff check .`; `mypy img2schem`
+- `img2schem instance list` · `img2schem palette build` · `img2schem palette report`
+- `img2schem convert tests/fixtures/photos/example.jpg --designer template --out out/dev`
+- `img2schem serve --open` (Phase 3+) · web: `cd web && npm i && npm run dev`
+- External tests: `IMG2SCHEM_RUN_EXTERNAL=1 pytest -m external`
+
+## Definition of done for any task
+1. Tests added/updated and green (including replay).
+2. Previews regenerated and visually checked (out/**/preview_*.png, debug_ops.png).
+3. report.json shows no new warnings; usage/cost within budget for Claude stages.
+4. DECISIONS.md updated if the SOW was deviated from.
+
+---
+
+# Working guidelines
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 

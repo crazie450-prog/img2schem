@@ -684,46 +684,58 @@ Data: Minecraft textures are read from the owner's own client jar for palette *s
 import numpy as np
 from nbtlib import File, Compound, List, Int, Short, IntArray, ByteArray
 
+
 def encode_varints(values: np.ndarray) -> bytes:
-    if values.max() < 128:                       # fast path, 1 byte per cell
+    if values.max() < 128:  # fast path, 1 byte per cell
         return values.astype(np.uint8).tobytes()
     out = bytearray()
     for v in values.tolist():
         while v >= 0x80:
-            out.append((v & 0x7F) | 0x80); v >>= 7
+            out.append((v & 0x7F) | 0x80)
+            v >>= 7
         out.append(v)
     return bytes(out)
 
-def write_schem_v2(path, idx: np.ndarray, palette: list[str], data_version: int,
-                   offset=(0, 0, 0)):
-    X, Y, Z = idx.shape                          # Width, Height, Length
+
+def write_schem_v2(path, idx: np.ndarray, palette: list[str], data_version: int, offset=(0, 0, 0)):
+    X, Y, Z = idx.shape  # Width, Height, Length
     assert max(X, Y, Z) <= 32767 and palette[0] == "minecraft:air"
-    flat = np.transpose(idx, (1, 2, 0)).reshape(-1)   # order: x fastest, then z, then y
+    flat = np.transpose(idx, (1, 2, 0)).reshape(-1)  # order: x fastest, then z, then y
     data = encode_varints(flat)
-    root = Compound({
-        "Version": Int(2),
-        "DataVersion": Int(data_version),
-        "Width": Short(X), "Height": Short(Y), "Length": Short(Z),
-        "Offset": IntArray(np.array(offset, dtype=np.int32)),
-        "PaletteMax": Int(len(palette)),
-        "Palette": Compound({name: Int(i) for i, name in enumerate(palette)}),
-        "BlockData": ByteArray(np.frombuffer(data, dtype=np.int8)),   # NBT bytes are signed
-        "BlockEntities": List[Compound]([]),
-        "Metadata": Compound({"WEOffsetX": Int(offset[0]), "WEOffsetY": Int(offset[1]),
-                              "WEOffsetZ": Int(offset[2])}),
-    })
+    root = Compound(
+        {
+            "Version": Int(2),
+            "DataVersion": Int(data_version),
+            "Width": Short(X),
+            "Height": Short(Y),
+            "Length": Short(Z),
+            "Offset": IntArray(np.array(offset, dtype=np.int32)),
+            "PaletteMax": Int(len(palette)),
+            "Palette": Compound({name: Int(i) for i, name in enumerate(palette)}),
+            "BlockData": ByteArray(np.frombuffer(data, dtype=np.int8)),  # NBT bytes are signed
+            "BlockEntities": List[Compound]([]),
+            "Metadata": Compound(
+                {"WEOffsetX": Int(offset[0]), "WEOffsetY": Int(offset[1]), "WEOffsetZ": Int(offset[2])}
+            ),
+        }
+    )
     f = File(root, gzipped=True)
-    f.root_name = "Schematic"                    # v2: root compound is named "Schematic"
+    f.root_name = "Schematic"  # v2: root compound is named "Schematic"
     f.save(str(path))
 
+
 def decode_varints(buf: bytes, n: int) -> np.ndarray:
-    out = np.empty(n, dtype=np.int32); i = 0
+    out = np.empty(n, dtype=np.int32)
+    i = 0
     for k in range(n):
-        v = 0; shift = 0
+        v = 0
+        shift = 0
         while True:
-            b = buf[i]; i += 1
+            b = buf[i]
+            i += 1
             v |= (b & 0x7F) << shift
-            if not (b & 0x80): break
+            if not (b & 0x80):
+                break
             shift += 7
         out[k] = v
     return out
@@ -735,8 +747,9 @@ Reader: `f = nbtlib.load(path)`; v2 fields are on `f` directly (root named `Sche
 ```python
 from transformers import pipeline
 from PIL import Image
+
 pipe = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
-depth = pipe(Image.open("rectified.png"))["depth"]     # PIL image; convert to np.float32
+depth = pipe(Image.open("rectified.png"))["depth"]  # PIL image; convert to np.float32
 ```
 Metric outdoor variant: `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf`.
 
@@ -744,6 +757,7 @@ Metric outdoor variant: `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-h
 
 ```python
 from transformers import pipeline
+
 det = pipeline("zero-shot-object-detection", model="IDEA-Research/grounding-dino-tiny")
 boxes = det(image, candidate_labels=["window", "door", "garage door", "balcony", "roof"], threshold=0.3)
 # each: {"score", "label", "box": {"xmin","ymin","xmax","ymax"}}
@@ -755,16 +769,17 @@ If the pipeline rejects the label format on the installed version, use `AutoProc
 ```python
 import numpy as np, trimesh
 from trimesh.proximity import ProximityQuery
+
 m = trimesh.load("model.glb", force="mesh")
-m.visual = m.visual.to_color()                   # bake UV texture → vertex colors
+m.visual = m.visual.to_color()  # bake UV texture → vertex colors
 m.apply_scale(target_height_blocks / m.extents[1])
-m.apply_translation(-m.bounds[0])                # min corner → origin
+m.apply_translation(-m.bounds[0])  # min corner → origin
 vg = m.voxelized(pitch=1.0).fill()
-occ = vg.matrix                                  # bool [X, Y, Z]
-centers = vg.points                              # filled voxel centers
+occ = vg.matrix  # bool [X, Y, Z]
+centers = vg.points  # filled voxel centers
 closest, dist, fid = ProximityQuery(m).on_surface(centers)
 bary = trimesh.triangles.points_to_barycentric(m.triangles[fid], closest)
-vc = m.visual.vertex_colors[m.faces[fid]][..., :3].astype(np.float32)   # (n, 3, 3)
+vc = m.visual.vertex_colors[m.faces[fid]][..., :3].astype(np.float32)  # (n, 3, 3)
 rgb = (bary[:, :, None] * vc).sum(axis=1).astype(np.uint8)
 ```
 
@@ -773,12 +788,17 @@ rgb = (bary[:, :, None] * vc).sum(axis=1).astype(np.uint8)
 ```python
 import asyncio
 from tripo3d import TripoClient
+
+
 async def gen(png_path, out_dir):
-    async with TripoClient() as client:          # reads TRIPO_API_KEY
+    async with TripoClient() as client:  # reads TRIPO_API_KEY
         task_id = await client.image_to_model(image=png_path, texture=True, pbr=False)
         task = await client.wait_for_task(task_id, timeout=600, verbose=True)
-        if task.status != "success": raise RuntimeError(task.status)
-        return await client.download_task_models(task, out_dir)   # {"model": ".../model.glb", ...}
+        if task.status != "success":
+            raise RuntimeError(task.status)
+        return await client.download_task_models(task, out_dir)  # {"model": ".../model.glb", ...}
+
+
 paths = asyncio.run(gen("ai_input.png", "run_dir"))
 ```
 

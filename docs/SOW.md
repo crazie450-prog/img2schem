@@ -940,23 +940,31 @@ See `docs/archive/SOW_v1.0.md` §11.1 (`encode_varints`, `write_schem_v2`, `deco
 import json, zipfile
 from pathlib import PurePosixPath
 
+
 class AssetFS:
     """Virtual FS over jars/packs; later sources override earlier ones."""
+
     def __init__(self, sources: list[zipfile.ZipFile]):
         self.index: dict[str, tuple[zipfile.ZipFile, str]] = {}
-        for z in sources:                                  # lowest → highest precedence
+        for z in sources:  # lowest → highest precedence
             for name in z.namelist():
                 if name.startswith("assets/"):
                     self.index[name] = (z, name)
+
     def read_json(self, path: str) -> dict | None:
         hit = self.index.get(path)
-        if not hit: return None
-        try: return json.loads(hit[0].read(hit[1]))
-        except Exception: return None                      # log + skip (RP.16)
+        if not hit:
+            return None
+        try:
+            return json.loads(hit[0].read(hit[1]))
+        except Exception:
+            return None  # log + skip (RP.16)
 
-def model_path(ref: str) -> str:                          # "minecraft:block/stone_bricks" → assets path
+
+def model_path(ref: str) -> str:  # "minecraft:block/stone_bricks" → assets path
     ns, _, p = ref.partition(":") if ":" in ref else ("minecraft", "", ref)
     return f"assets/{ns}/models/{p}.json"
+
 
 def resolve_model(fs: AssetFS, ref: str, depth=0) -> dict:
     m = fs.read_json(model_path(ref)) or {}
@@ -971,11 +979,13 @@ def resolve_model(fs: AssetFS, ref: str, depth=0) -> dict:
     m.setdefault("_parents", [parent] if parent else [])
     return m
 
+
 def resolve_texture(textures: dict, key: str, depth=0) -> str | None:
     v = textures.get(key.lstrip("#"))
     while isinstance(v, str) and v.startswith("#") and depth < 10:
-        v = textures.get(v[1:]); depth += 1
-    return v                                               # e.g. "minecraft:block/stone_bricks"
+        v = textures.get(v[1:])
+        depth += 1
+    return v  # e.g. "minecraft:block/stone_bricks"
 ```
 Nested jars: open `META-INF/jars/*.jar` / `META-INF/jarjar/*.jar` members with `zipfile.ZipFile(io.BytesIO(z.read(name)))` and add them to `sources` right after their parent.
 
@@ -983,28 +993,34 @@ Nested jars: open `META-INF/jars/*.jar` / `META-INF/jarjar/*.jar` members with `
 
 ```python
 import anthropic
-client = anthropic.Anthropic()                             # reads ANTHROPIC_API_KEY
 
-system = [{"type": "text", "text": SYSTEM_PROMPT + PALETTE_SUMMARY,
-           "cache_control": {"type": "ephemeral"}}]        # prompt caching
+client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+
+system = [
+    {"type": "text", "text": SYSTEM_PROMPT + PALETTE_SUMMARY, "cache_control": {"type": "ephemeral"}}
+]  # prompt caching
 messages = [{"role": "user", "content": initial_content}]  # text + images (base64) + template summary
 
 while True:
-    with client.messages.stream(model=cfg.claude.design_model, max_tokens=cfg.claude.max_tokens,
-                                system=system, tools=TOOLS, messages=messages) as stream:
+    with client.messages.stream(
+        model=cfg.claude.design_model, max_tokens=cfg.claude.max_tokens, system=system, tools=TOOLS, messages=messages
+    ) as stream:
         for event in stream:
-            if event.type == "content_block_stop" and getattr(event, "content_block", None) \
-               and event.content_block.type == "tool_use":
-                ui.preview_pending(event.content_block)    # optional early UI feedback
+            if (
+                event.type == "content_block_stop"
+                and getattr(event, "content_block", None)
+                and event.content_block.type == "tool_use"
+            ):
+                ui.preview_pending(event.content_block)  # optional early UI feedback
         final = stream.get_final_message()
-    meter.add(final.usage); meter.check_budget()           # RD.5
+    meter.add(final.usage)
+    meter.check_budget()  # RD.5
     messages.append({"role": "assistant", "content": final.content})
     results = []
     for block in final.content:
         if block.type == "tool_use":
-            ok, payload = tools.dispatch(block.name, block.input)   # validate → compile → summary
-            results.append({"type": "tool_result", "tool_use_id": block.id,
-                            "content": payload, "is_error": not ok})
+            ok, payload = tools.dispatch(block.name, block.input)  # validate → compile → summary
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": payload, "is_error": not ok})
     if final.stop_reason != "tool_use" or tools.finished:
         break
     messages.append({"role": "user", "content": results})
