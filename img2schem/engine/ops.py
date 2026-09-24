@@ -134,6 +134,86 @@ class Window(OpBase):
         return self
 
 
+class Ellipse(BaseModel):
+    """An ellipse (or circle, rx = rz) centered at ``center`` (x, z), rotated ``rotate`` degrees."""
+
+    shape: Literal["ellipse"] = "ellipse"
+    center: tuple[float, float] = (0.0, 0.0)
+    rx: float = Field(gt=0)
+    rz: float = Field(gt=0)
+    rotate: float = 0.0
+
+
+class Polygon(BaseModel):
+    """A closed polygon through ``points`` [(x, z), ...] in order."""
+
+    shape: Literal["polygon"] = "polygon"
+    points: list[tuple[float, float]] = Field(min_length=3)
+
+
+Shape2D = Annotated[Ellipse | Polygon, Field(discriminator="shape")]
+
+
+class Profile(BaseModel):
+    """A horizontal outline: ``outer`` minus every shape in ``minus`` (e.g. a crescent is an ellipse minus an
+    offset ellipse). Coordinates are in the XZ plane, in blocks."""
+
+    outer: Shape2D
+    minus: list[Shape2D] = Field(default_factory=list)
+
+
+class LoftKey(BaseModel):
+    """The profile's transform at height ``y``: scaled (``scale`` x ``sx`` / ``sz``) and rotated (degrees) about
+    the op's ``pivot``, then moved by (``dx``, ``dz``)."""
+
+    y: int
+    dx: float = 0.0
+    dz: float = 0.0
+    scale: float = Field(1.0, gt=0)
+    sx: float = Field(1.0, gt=0)
+    sz: float = Field(1.0, gt=0)
+    rotate: float = 0.0
+
+
+class Loft(OpBase):
+    """A profile carried up through ``keys`` (sorted by y): taper with scale, lean with dx/dz, twist with rotate.
+    Two keys with the same transform make a straight extrusion. Between keys the transform is interpolated
+    ``linear`` or ``smooth`` (Catmull-Rom through the keys).
+
+    ``fill``: ``solid``, or ``shell`` walls ``thickness`` blocks thick; ``floor_every`` N adds a full floor of
+    ``floor_mat`` every N levels from the bottom key (and ``caps`` closes the top and bottom)."""
+
+    op: Literal["loft"] = "loft"
+    profile: Profile
+    keys: list[LoftKey] = Field(min_length=1)
+    pivot: tuple[float, float] = (0.0, 0.0)
+    interp: Literal["linear", "smooth"] = "smooth"
+    fill: Literal["solid", "shell"] = "solid"
+    thickness: int = Field(1, ge=1)
+    mat: str
+    floor_every: int | None = Field(None, ge=1)
+    floor_mat: str | None = None
+    caps: bool = False
+
+    @model_validator(mode="after")
+    def _keys(self) -> Loft:
+        ys = [k.y for k in self.keys]
+        if ys != sorted(ys) or len(set(ys)) != len(ys):
+            raise ValueError("loft keys must have strictly increasing y")
+        return self
+
+
+class Sweep(OpBase):
+    """A round tube of ``radius`` blocks along a curve through ``points`` [(x, y, z), ...] (``smooth``:
+    Catmull-Rom through the points; ``linear``: straight segments). For ribs, arches and swooping frames."""
+
+    op: Literal["sweep"] = "sweep"
+    points: list[tuple[float, float, float]] = Field(min_length=2)
+    radius: float = Field(0.5, ge=0.5)
+    interp: Literal["linear", "smooth"] = "smooth"
+    mat: str
+
+
 class Roof(OpBase):
     """A roof over ``footprint`` whose lowest course sits at ``y0`` (usually the top of the walls + 1).
 
@@ -213,7 +293,7 @@ class SetBlock(OpBase):
 
 
 Op = Annotated[
-    Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock,
+    Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock | Loft | Sweep,
     Field(discriminator="op"),
 ]
 

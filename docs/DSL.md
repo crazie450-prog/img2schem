@@ -59,6 +59,8 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `trim_band` | `footprint`, `y`, `mat` (`$trim`), `outset` | 1-block ring (belt course, cornice) |
 | `carve` | `from`, `to` | sets a box to air |
 | `set` | `cells`, `block` | escape hatch: ≤ 64 cells per op, ≤ 256 per build |
+| `loft` | `profile`, `keys`, `pivot`, `interp`, `fill`, `thickness`, `mat`, `floor_every`, `floor_mat`, `caps` | a curved horizontal profile carried up through keys; see below |
+| `sweep` | `points` (x, y, z), `radius`, `interp`, `mat` | a round tube along a curve (ribs, arches) |
 
 ### Roofs
 
@@ -78,8 +80,35 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `1:2` | alternating bottom and top slabs (half a block per step) | `<mat>.slab` |
 | `2:1` | a full block under a stair (two blocks per step) | `<mat>.stairs` |
 
+### Curves: `loft` and `sweep`
+
+A `profile` is a horizontal shape in the XZ plane: `outer` minus each shape in `minus`. Shapes are
+`{"shape": "ellipse", "center": [x, z], "rx": 9, "rz": 5, "rotate": 0}` or
+`{"shape": "polygon", "points": [[x, z], ...]}`. A crescent is an ellipse minus an offset ellipse.
+
+`keys` (strictly increasing `y`) place the profile at heights: each key scales it (`scale`, and per axis `sx`,
+`sz`), rotates it by `rotate` degrees about `pivot`, then shifts it by (`dx`, `dz`). Between keys the transform
+is interpolated `smooth` (Catmull-Rom, default) or `linear`; the loft runs from the first key's y to the last.
+One pair of equal keys is a straight extrusion; shrinking `scale` tapers, changing `dx`/`dz` leans, changing
+`rotate` twists.
+
+- `fill: "solid"` fills the profile; `"shell"` keeps walls `thickness` blocks thick (watertight at any lean).
+- `floor_every: N` puts a full layer of `floor_mat` (default `mat`) every N levels from the first key;
+  `caps: true` also closes the top and bottom.
+
+```json
+{"op": "loft", "id": "core", "profile": {"outer": {"shape": "ellipse", "rx": 13, "rz": 9}},
+ "keys": [{"y": 0}, {"y": 50, "scale": 0.85, "rotate": 10}, {"y": 96, "scale": 0.6, "rotate": 25}],
+ "fill": "shell", "mat": "$glass", "floor_every": 4, "floor_mat": "$floor", "caps": true}
+```
+
+`sweep` places balls of `radius` along a curve through `points`; the curve passes through every point.
+
+Builds may be up to 256 tall (the top of a 1.7.10 world); larger footprints only warn. Full example:
+`examples/tower.ops.json`.
+
 ## Not implemented yet
 
-From SOW §6.5: `railing`, `vary`, `define`/`place`, `array`, `mirror`, and polygon footprints (rectangles only
-for now). `facade_from_spec` is replaced by the template generator writing one `window` op per measured window
-(D-021), so `ops.json` never depends on `spec.json`.
+From SOW §6.5: `railing`, `vary`, `define`/`place`, `array`, `mirror`, and polygon footprints for the
+rectangular ops (use `loft` for curved or polygonal plans). `facade_from_spec` is replaced by the template
+generator writing one `window` op per measured window (D-021), so `ops.json` never depends on `spec.json`.

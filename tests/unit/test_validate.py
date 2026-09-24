@@ -99,3 +99,11 @@ def test_contrast_guard():
     assert contrast_issues({"wall": "minecraft:stone", "trim": "minecraft:quartz_block"}, labs.get) == []
     (issue,) = contrast_issues({"wall": "minecraft:sandstone", "trim": "minecraft:quartz_block"}, labs.get)
     assert issue.rule == "R10.9"
+
+
+def test_height_limit_of_a_1_7_10_world():
+    g = BlockGrid.empty(1, 257, 1)
+    g.fill((0, 0, 0), (0, 256, 0), "minecraft:stone")
+    issues = validate_grid(g, Budgets(), shape_of=SHAPE)
+    assert any(i.rule == "R10.2" and i.severity == "error" and "height 257" in i.message for i in issues)
+    assert Budgets().max_dim == 256 and Budgets().hard_max_total == 16_000_000

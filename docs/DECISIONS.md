@@ -267,3 +267,21 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Synthetic facades** (`tests/fixtures/synthetic/gen.py`, §8.2): flat-color facade + roof band, known
   homography, noise and vignetting. Tests: rectification ≤ 2 px RMS (A1) over 4 random perspectives; wall color
   recovered and matched to the right block (A-M) through warp/noise/vignette.
+
+### D-026 Grand-scale builds: curve ops (loft, sweep) and raised budgets
+- **Context (owner request):** a futuristic tower about 100 blocks tall (curved glass core, crescent blades) "on
+  a grand scale". Rectangle-only ops can't express it, and the old budgets (SOW R10.2) were sized for houses.
+- **Budgets** (`config.py`): `max_dim` 256 and `max_nonair` 1,000,000 now only warn; `hard_max_total`
+  16,000,000 cells stops the compile. New `max_height` 256 is an **error**: a 1.7.10 world ends at y = 256, so a
+  taller build can't be pasted. The paste point also needs the build's height of free space below y = 256.
+- **`loft`:** a 2D profile (ellipse or polygon, minus cut-out shapes: a crescent = ellipse − offset ellipse)
+  carried up through y-keys that scale, stretch, rotate about a pivot and shift. Between keys the transform is
+  interpolated linearly or with Catmull-Rom (`smooth`, default). `fill` is solid or a shell `thickness` thick
+  (the profile mask minus its erosion, so the shell is watertight); `floor_every` / `caps` add floor layers.
+  Replaces SOW §6.5's "polygon footprints" for curved plans.
+- **`sweep`:** a round tube along a Catmull-Rom or straight curve (ribs, arches).
+- **Rasterization** uses an even-odd point-in-polygon test at cell centers. `cv2.fillPoly` also filled cells
+  the outline only touched, so a 12 × 12 square came out 13 × 13 and symmetric shapes weren't symmetric.
+- **Not yet:** stair/slab smoothing of curved surfaces; the dict-based compiler is fine at ~30k blocks (tower:
+  1 s) but will need vectorizing for builds near 1M blocks.
+- **Example:** `examples/tower.ops.json` (80 × 109 × 68, ~26k blocks, vanilla + `etfuturum:smooth_stone`).

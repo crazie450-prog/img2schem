@@ -148,6 +148,14 @@ def validate_grid(
                 message=f"{nonair} non-air blocks exceed max_nonair {budgets.max_nonair}",
             )
         )
+    if dims[1] > budgets.max_height:
+        issues.append(
+            Issue(
+                rule="R10.2",
+                severity="error",
+                message=f"height {dims[1]} exceeds {budgets.max_height}, the build limit of a 1.7.10 world",
+            )
+        )
     total = dims[0] * dims[1] * dims[2]
     if total > budgets.hard_max_total and not allow_large:
         issues.append(

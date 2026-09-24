@@ -15,9 +15,11 @@ from pydantic import BaseModel, Field
 
 
 class Budgets(BaseModel):
-    max_dim: int = 128
-    max_nonair: int = 250_000
-    hard_max_total: int = 2_000_000
+    # Owner decision D-026: grand-scale builds. max_dim / max_nonair only warn; hard_max_total stops the compile.
+    max_dim: int = 256
+    max_nonair: int = 1_000_000
+    hard_max_total: int = 16_000_000
+    max_height: int = 256  # Minecraft 1.7.10 worlds end at y = 256: a taller build cannot be pasted
 
 
 class ExportSettings(BaseModel):

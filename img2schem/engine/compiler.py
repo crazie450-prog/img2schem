@@ -18,16 +18,19 @@ from img2schem.engine.ops import (
     Column,
     Door,
     Floors,
+    Loft,
     Op,
     Openings,
     OpsDoc,
     Roof,
     SetBlock,
+    Sweep,
     TrimBand,
     Walls,
     Window,
 )
 from img2schem.engine.roof import roof_cells
+from img2schem.engine.shapes import loft_cells, sweep_cells
 from img2schem.engine.states import door_metas, log_meta
 from img2schem.models import AIR, BlockGrid
 from img2schem.palette.query import PaletteIndex
@@ -160,6 +163,14 @@ def rasterize(op: Op, res: Resolver) -> list[Cell]:
         return [
             (x, op.y, z, b, TRIM) for x, _, z in _box((x0, op.y, z0), (x1, op.y, z1)) if x in (x0, x1) or z in (z0, z1)
         ]
+    if isinstance(op, Loft):
+        walls, floors = loft_cells(op)
+        wall_b = res(op.mat).block
+        floor_b = res(op.floor_mat).block if op.floor_mat else wall_b
+        return [(x, y, z, wall_b, WALL) for x, y, z in walls] + [(x, y, z, floor_b, FLOOR) for x, y, z in floors]
+    if isinstance(op, Sweep):
+        b = res(op.mat).block
+        return [(x, y, z, b, OTHER) for x, y, z in sweep_cells(op)]
     if isinstance(op, Carve):
         return [(x, y, z, AIR, AIR_L) for x, y, z in _box(op.from_, op.to)]
     if isinstance(op, SetBlock):

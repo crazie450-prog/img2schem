@@ -40,6 +40,7 @@ img2schem materials my.spec.json photo.jpg --corners "x,y x,y x,y x,y" [--roof-b
                                           # photo colors -> blocks for wall/roof/trim/base/window/door in the spec
 img2schem plan examples/brick_house.spec.json  # spec.json (measured description) -> brick_house.ops.json (build program)
 img2schem compile examples/brick_house.ops.json # ops.json -> .schematic + previews + report.json (+ WorldEdit folder)
+img2schem compile examples/tower.ops.json      # a 109-tall curved tower (loft/sweep ops, docs/DSL.md)
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
 img2schem preview  some.schematic --out out/prev
