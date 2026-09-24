@@ -88,3 +88,18 @@ def test_compile_example_house(tmp_path, monkeypatch):
                                        '"z1": 3}, "height": 2, "mat": "$nope"}]}')  # fmt: skip
     r = runner.invoke(app, ["compile", "bad.json", "--out", "out2"])
     assert r.exit_code == 2 and "no slot" in r.output
+
+
+def test_plan_then_compile(tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    src = Path("examples/house.spec.json").resolve()
+    _env(tmp_path, monkeypatch)
+    shutil.copy(src, tmp_path / "house.spec.json")
+    r = runner.invoke(app, ["plan", "house.spec.json"])
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "house.ops.json").is_file()
+    r = runner.invoke(app, ["compile", "house.ops.json", "--out", "out"])
+    assert r.exit_code == 0, r.output
+    assert runner.invoke(app, ["plan", "house.spec.json", "--designer", "claude"]).exit_code == 4

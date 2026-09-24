@@ -1,0 +1,4 @@
+# Blocks the template generator uses for roles a spec leaves without `chosen` (vanilla 1.7.10, always present).
+glass: minecraft:glass_pane
+door: minecraft:wooden_door
+floor: minecraft:planks

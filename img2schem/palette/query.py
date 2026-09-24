@@ -65,3 +65,16 @@ class PaletteIndex:
                 de, member = min(cands)
                 out[shape] = member if de <= FAMILY_MAX_DE else None
         return out
+
+    def nearest_with_family(
+        self, lab: tuple[float, float, float], need: tuple[str, ...] = ("stairs", "slab"), n: int = 1
+    ) -> list[tuple[float, str]]:
+        """Usable full blocks closest in color (CIE76) that have every family member in ``need``."""
+        out = []
+        for block, (blk, v) in self.by_block.items():
+            if blk.shape != "full_cube" or v.lab is None:
+                continue
+            fam = self.family(block)
+            if all(fam[m] for m in need):
+                out.append((delta_e(lab, v.lab), block))
+        return sorted(out)[:n]

@@ -196,3 +196,18 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Paste offset:** `WEOffset = (-(W//2), -origin_y - 1, -origin_z + 2)`, so the design's z = 0 plane still lands
   2 blocks ahead when a roof overhangs in front (design z < 0).
 - **Not yet done from RE.8:** incremental recompiles (only needed for the Phase 3 UI).
+
+### D-021 BuildSpec conventions and the template generator
+- **Element boxes** are normalized over the front **wall** (left → right, eaves = 0 → ground = 1), not the whole
+  image, so they map straight onto wall rows. The roof is described separately (`roof`).
+- **Storey layout:** a foundation at y = 0 (replaces the ground, D-015); walls from y = 1; floor slabs at
+  y = 0, g, g + s, …; the roof one block above the walls. Defaults g = s = 4 (SOW); the example uses 5.
+- **`window` op instead of `facade_from_spec`:** the template writes one `window` op per measured window
+  (recessed one block by default), so `ops.json` is self-contained and editable. Doors 2+ blocks wide become a
+  double door (hinges left/right; hinge look not yet checked in game).
+- **Rules:** v1 R6.5 (windows ≥ 1×2, never on the ground or eaves row; doors 2 tall at ground), v1 R4a.4 sparse
+  side/back windows (one per storey per 6 blocks), RT.3 roof fallback to the nearest-colored usable block that
+  has stairs/slab. Element kinds other than window/door are reported as warnings for a designer to handle.
+- **Role defaults** for glass/door/floor live in `palette/data/role_defaults.yaml` (vanilla, always present).
+- **Golden test:** `tests/golden/house_spec.npz` is the compiled `examples/house.spec.json`; regenerate with
+  `UPDATE_GOLDEN=1 pytest tests/unit/test_plan_template.py` after an intentional change.

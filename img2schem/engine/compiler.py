@@ -25,6 +25,7 @@ from img2schem.engine.ops import (
     SetBlock,
     TrimBand,
     Walls,
+    Window,
 )
 from img2schem.engine.roof import roof_cells
 from img2schem.engine.states import door_metas, log_meta
@@ -100,6 +101,21 @@ def _openings(op: Openings, res: Resolver) -> list[Cell]:
     return cells
 
 
+def _window(op: Window, res: Resolver) -> list[Cell]:
+    fp = op.footprint
+    glass = res(op.mat).block
+    # (axis of the plane, plane coordinate, inward step)
+    plane, inward = {"front": (fp.z0, 1), "back": (fp.z1, -1), "left": (fp.x0, 1), "right": (fp.x1, -1)}[op.face]
+    cells: list[Cell] = []
+    for u in range(op.u0, op.u1 + 1):
+        for y in range(op.y0, op.y1 + 1):
+            for depth in range(op.recess + 1):
+                w = plane + depth * inward
+                x, z = (u, w) if op.face in ("front", "back") else (w, u)
+                cells.append((x, y, z, glass if depth == op.recess else AIR, WINDOW))
+    return cells
+
+
 def rasterize(op: Op, res: Resolver) -> list[Cell]:
     if isinstance(op, Box):
         b = res(op.mat).block
@@ -126,6 +142,8 @@ def rasterize(op: Op, res: Resolver) -> list[Cell]:
         return [(x, y, z, format_block(m.name, lower), DOOR), (x, y + 1, z, format_block(m.name, upper), DOOR)]
     if isinstance(op, Openings):
         return _openings(op, res)
+    if isinstance(op, Window):
+        return _window(op, res)
     if isinstance(op, Roof):
         return roof_cells(op, res)
     if isinstance(op, Column):

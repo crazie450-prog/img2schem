@@ -112,6 +112,28 @@ class Openings(OpBase):
     mat: str = "$glass"
 
 
+class Window(OpBase):
+    """One window: a rectangle on a face of ``footprint`` spanning ``u0``..``u1`` along the face (x on front/back,
+    z on left/right) and ``y0``..``y1``. ``recess: 1`` leaves the wall cell open and sets the glass one block in,
+    which gives the facade depth; ``0`` puts the glass in the wall plane."""
+
+    op: Literal["window"] = "window"
+    footprint: Rect
+    face: Literal["front", "back", "left", "right"]
+    u0: int
+    u1: int
+    y0: int
+    y1: int
+    recess: int = Field(0, ge=0, le=1)
+    mat: str = "$glass"
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Window:
+        if self.u1 < self.u0 or self.y1 < self.y0:
+            raise ValueError("window needs u0 <= u1 and y0 <= y1")
+        return self
+
+
 class Roof(OpBase):
     """A roof over ``footprint`` whose lowest course sits at ``y0`` (usually the top of the walls + 1).
 
@@ -191,7 +213,7 @@ class SetBlock(OpBase):
 
 
 Op = Annotated[
-    Box | Walls | Floors | Door | Openings | Roof | Column | Beam | TrimBand | Carve | SetBlock,
+    Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock,
     Field(discriminator="op"),
 ]
 

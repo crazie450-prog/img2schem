@@ -9,10 +9,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 AIR = "minecraft:air"
 
@@ -205,6 +205,79 @@ class Palette(BaseModel):
         blk = self.blocks.get(name)
         v = blk.variant_for(meta) if blk else None
         return v.rgb if v else None
+
+
+# ---------------------------------------------------------------- BuildSpec (SOW §5.3: v1 FacadeSpec + v2 fields)
+
+
+class Scale(BaseModel):
+    blocks_per_m: float = Field(default=1.0, gt=0)
+    storey_height_blocks: int = Field(default=4, ge=3)
+    ground_storey_height_blocks: int = Field(default=4, ge=3)
+
+
+class Facade(BaseModel):
+    width_m: float = Field(gt=0)
+    height_m: float | None = None  # estimate incl. roof; informational
+    storeys: int = Field(ge=1, le=30)
+    symmetric: bool = False
+
+
+class Footprint(BaseModel):
+    depth_ratio: float = Field(default=0.6, gt=0)
+    depth_m: float | None = None  # overrides depth_ratio
+
+
+class RoofSpec(BaseModel):
+    type: Literal["flat", "gable", "hip", "shed", "auto"] = "auto"
+    ridge: Literal["parallel", "perpendicular"] = "parallel"  # to the front facade
+    pitch: Literal["low", "medium", "steep"] = "medium"
+    overhang_blocks: int = Field(default=1, ge=0)
+
+
+class Element(BaseModel):
+    """An opening measured on the rectified facade. ``bbox`` = [x0, y0, x1, y1], normalized 0-1 over the wall
+    from the left edge to the right and from the eaves (0) down to the ground (1)."""
+
+    kind: str  # window | door | garage | balcony | porch | bay | chimney | ... (template handles window, door)
+    bbox: tuple[float, float, float, float]
+    storey: int | None = None
+    face: Literal["front", "left", "right", "back"] = "front"
+
+    @model_validator(mode="after")
+    def _bbox(self) -> Element:
+        x0, y0, x1, y1 = self.bbox
+        if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+            raise ValueError(f"bbox must satisfy 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, got {self.bbox}")
+        return self
+
+
+class MaterialSpec(BaseModel):
+    hint: str | None = None
+    rgb: tuple[int, int, int] | None = None
+    candidates: list[str] = Field(default_factory=list)
+    chosen: str | None = None  # a block (name@meta); fills the style slot
+    stairs: str | None = None  # optional explicit family members (else the palette family is used)
+    slab: str | None = None
+
+
+class BuildSpec(BaseModel):
+    """``spec.json``: the measured, human-editable description of the building."""
+
+    version: int = 2
+    input_mode: Literal["photo", "multiview", "describe", "manual"] = "manual"
+    building_type: str | None = None
+    scale: Scale = Scale()
+    facade: Facade
+    footprint: Footprint = Footprint()
+    roof: RoofSpec = RoofSpec()
+    elements: list[Element] = Field(default_factory=list)
+    materials: dict[str, MaterialSpec] = Field(default_factory=dict)  # wall, roof, trim, window, door, base, floor
+    style: dict[str, Any] = Field(default_factory=dict)
+    features: list[dict[str, Any]] = Field(default_factory=list)
+    unseen: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- validation

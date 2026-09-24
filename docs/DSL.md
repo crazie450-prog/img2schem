@@ -52,6 +52,7 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `floors` | `footprint`, `ys` (list), `mat` (`$floor`) | full layers at each y |
 | `door` | `pos` (lower half), `facing`, `mat` (`$door`), `hinge` | two-block door; `facing` = the wall's outward side (`north` for the front wall). Carve the opening first if a wall is there |
 | `openings` | `footprint`, `face` (front/back/left/right), `sills`, `w`, `h`, `spacing`, `count`, `margin`, `mat` (`$glass`) | a centered row of equal windows at each sill height; `count: 0` fits as many as possible |
+| `window` | `footprint`, `face`, `u0`, `u1`, `y0`, `y1`, `recess` (0/1), `mat` (`$glass`) | one window; `u` runs along the face (x on front/back, z on sides); `recess: 1` sets the glass one block in |
 | `roof` | `footprint`, `y0`, `type`, `pitch`, `ridge`, `rise`, `overhang`, `mat` (`$roof`), `gable_fill` (`$wall`), `parapet` | see below |
 | `column` | `pos` (x, z), `y0`, `height`, `mat` | vertical run; logs stand upright |
 | `beam` | `from`, `to` (one axis), `mat` | horizontal or vertical run; logs lie along it |
@@ -79,5 +80,6 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 
 ## Not implemented yet
 
-From SOW §6.5: `facade_from_spec` (arrives with the template generator), `railing`, `vary`, `define`/`place`,
-`array`, `mirror`, and polygon footprints (rectangles only for now).
+From SOW §6.5: `railing`, `vary`, `define`/`place`, `array`, `mirror`, and polygon footprints (rectangles only
+for now). `facade_from_spec` is replaced by the template generator writing one `window` op per measured window
+(D-021), so `ops.json` never depends on `spec.json`.
