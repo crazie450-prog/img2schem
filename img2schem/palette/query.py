@@ -14,9 +14,12 @@ import numpy as np
 
 from img2schem.models import Palette, PaletteBlock, PaletteVariant
 from img2schem.util.block import parse_block
+from img2schem.util.color import ciede2000
 
 FAMILY_SHAPES = ("stairs", "slab", "wall", "fence", "fence_gate")
 FAMILY_MAX_DE = 20.0  # a same-stem member further than this (CIE76) doesn't look like the base block
+ROLES = ("wall", "roof", "trim", "base", "floor", "glass", "door")
+BUSY_VARIANCE = 8.0  # RM.2: walls with busier top faces than this read as noise at a distance
 
 _DROP_WORDS = re.compile(
     r"\((?:fireproof)\)|\b(?:stairs?|slabs?|walls?|fence gate|fences?|block of|blocks?|planks?|wood|double)\b"
@@ -45,6 +48,50 @@ class PaletteIndex:
                 if blk.shape in self._stems:
                     self._stems[blk.shape][stem(v.display)].append(v)
 
+    def color_lab(self, v: PaletteVariant) -> tuple[float, float, float] | None:
+        """The true block color (lit top face) when known, else the icon average."""
+        return v.face_lab or v.lab
+
+    def match(self, lab: tuple[float, float, float], role: str, n: int = 8) -> list[dict[str, object]]:
+        """RM.2: palette blocks for a role, best first. Score = CIEDE2000 distance + penalties (roof/trim: +6 without
+        stairs, +3 without a slab; wall: +2 for a busy texture). Exact: candidates are visited in color order until
+        the color distance alone exceeds the n-th best score."""
+        if role not in ROLES:
+            raise ValueError(f"unknown role {role!r} (one of {', '.join(ROLES)})")
+        pool: list[tuple[PaletteBlock, PaletteVariant, tuple[float, float, float]]] = []
+        for blk, v in self.by_block.values():
+            c = self.color_lab(v)
+            if c is None:
+                continue
+            is_glass = "glass" in f"{blk.name} {v.display}".lower()
+            if role == "glass":
+                ok = is_glass and blk.shape in ("pane", "full_cube")
+            elif role == "door":
+                ok = blk.shape == "door"
+            else:
+                ok = blk.shape == "full_cube" and not is_glass
+            if ok:
+                pool.append((blk, v, c))
+        if not pool:
+            return []
+        des = ciede2000(np.array(lab), np.array([c for _, _, c in pool]))
+        out: list[dict[str, object]] = []
+        for i in np.argsort(des, kind="stable"):
+            de = float(des[i])
+            if len(out) >= n and de > sorted(float(r["score"]) for r in out)[n - 1]:  # type: ignore[arg-type]
+                break  # penalties are >= 0, so nothing further can score better
+            blk, v, _ = pool[i]
+            fam = self.family(v.block) if role in ("roof", "trim") else {}
+            penalty = 0.0
+            if role in ("roof", "trim"):
+                penalty += (6.0 if not fam.get("stairs") else 0.0) + (3.0 if not fam.get("slab") else 0.0)
+            if role == "wall" and (v.variance or 0.0) > BUSY_VARIANCE:
+                penalty += 2.0
+            row = {"block": v.block, "display": v.display, "mod": blk.mod, "de": round(de, 2)}
+            row |= {"score": round(de + penalty, 2), "stairs": fam.get("stairs"), "slab": fam.get("slab")}
+            out.append(row)
+        return sorted(out, key=lambda r: (r["score"], r["block"]))[:n]  # type: ignore[return-value]
+
     def usable(self, block: str) -> tuple[PaletteBlock, PaletteVariant] | None:
         """The usable variant a placed block (any orientation metadata) belongs to."""
         name, meta = parse_block(block)
@@ -59,6 +106,7 @@ class PaletteIndex:
         if hit is None or hit[0].shape != "full_cube" or hit[1].lab is None:
             return out
         lab = hit[1].lab
+        assert lab is not None
         for shape in FAMILY_SHAPES:
             cands = [(delta_e(lab, c.lab), c.block) for c in self._stems[shape].get(stem(hit[1].display), []) if c.lab]
             if cands:

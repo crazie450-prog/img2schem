@@ -28,9 +28,9 @@ from PIL import Image
 
 from img2schem.models import Palette, PaletteBlock, PaletteVariant, Shape
 from img2schem.util.block import format_block
-from img2schem.util.color import hex_color, icon_color, srgb_to_lab
+from img2schem.util.color import hex_color, icon_color, icon_face, srgb_to_lab
 
-IMPORTER_VERSION = "5"
+IMPORTER_VERSION = "8"
 # Icons darker than this (CIELAB L*) are flagged: NEI renders some mods' blocks (e.g. Botania metamorphic
 # stone) nearly black, but real black blocks (obsidian, black wool) look the same, so they are only flagged.
 DARK_ICON_L = 12.0
@@ -61,7 +61,11 @@ _CUBE_OUTLINE = np.array(
         "...##########...", ".....######.....", ".......##.......",
     )]
 )  # fmt: skip
-MATERIAL_METAS: dict[str, set[int]] = {"stairs": {0, 8}, "slab": set(range(8)), "log": set(range(4))}
+# Doors, trapdoors and fence gates use their metadata for orientation/halves/open, so only variant 0 is placeable
+# by metadata (e.g. ExtraTrees doors keep the wood type in tile-entity NBT).
+MATERIAL_METAS: dict[str, set[int]] = {
+    "stairs": {0, 8}, "slab": set(range(8)), "log": set(range(4)), "door": {0}, "trapdoor": {0}, "fence_gate": {0},
+}  # fmt: skip
 CUBE_IOU = 0.95  # stairs icons score ~0.92, slabs ~0.64 (measured on the owner's dump)
 
 
@@ -186,10 +190,19 @@ def import_nei(dumps: Path) -> Palette:
             if m and m.group(1).lower() in plain:
                 v.flags.append("infested")
 
-    # Blocks without a known shape whose every icon has the plain-cube outline are full cubes.
+    # Cube-outline icons: true color from the lit top face. Blocks without a known shape whose every icon has the
+    # outline are full cubes.
     for blk in pal.blocks.values():
-        icons = [v.icon for v in blk.variants if v.icon]
-        if blk.shape == "unknown" and blk.name not in overrides and icons:
-            if all(cube_outline_iou(Path(i)) >= CUBE_IOU for i in icons):
-                blk.shape = "full_cube"
+        cube_icons = 0
+        for v in blk.variants:
+            if v.icon and cube_outline_iou(Path(v.icon)) >= CUBE_IOU:
+                cube_icons += 1
+                face = icon_face(Path(v.icon))
+                if face:
+                    v.face_rgb, v.variance = face[0], round(face[1], 2)
+                    lab = srgb_to_lab(np.array(face[0]))
+                    v.face_lab = (round(float(lab[0]), 2), round(float(lab[1]), 2), round(float(lab[2]), 2))
+        icons = sum(1 for v in blk.variants if v.icon)
+        if blk.shape == "unknown" and blk.name not in overrides and icons and cube_icons == icons:
+            blk.shape = "full_cube"
     return pal

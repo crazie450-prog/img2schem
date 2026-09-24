@@ -122,3 +122,29 @@ def test_compile_accepts_a_spec_and_picks_up_edits(tmp_path, monkeypatch):
     r = runner.invoke(app, ["compile", "my.spec.json", "--out", "b"])
     assert r.exit_code == 0, r.output
     assert read_schematic(tmp_path / "b" / "my.schematic")[0].shape[1] == h2 + 5
+
+
+def test_materials_from_a_photo_then_compile(tmp_path, monkeypatch):
+    from fixtures.jars.make import nei_dumps
+    from fixtures.synthetic.gen import photograph, render_facade
+    from PIL import Image
+
+    _env(tmp_path, monkeypatch)
+    monkeypatch.setenv("IMG2SCHEM_CACHE_DIR", str(tmp_path / "cache"))
+    assert runner.invoke(app, ["palette", "import", str(nei_dumps(tmp_path / "dumps"))]).exit_code == 0
+    elements = [{"kind": "window", "bbox": [0.1, 0.15, 0.25, 0.4]}, {"kind": "door", "bbox": [0.44, 0.55, 0.56, 1.0]}]
+    facade, _ = render_facade(elements, wall=(88, 88, 88), roof=(91, 91, 91))
+    photo, corners, _ = photograph(facade, facade.shape[0] - 400, seed=2)
+    Image.fromarray(photo).save(tmp_path / "house.jpg")
+    spec = {"facade": {"width_m": 10, "storeys": 1}, "elements": elements,
+            "materials": {"wall": {}, "roof": {"rgb": [91, 91, 91]}}}  # fmt: skip
+    (tmp_path / "h.spec.json").write_text(json.dumps(spec))
+    arg = " ".join(f"{x:.1f},{y:.1f}" for x, y in corners)
+    r = runner.invoke(app, ["materials", "h.spec.json", "house.jpg", "--corners", arg, "--run", "run"])
+    assert r.exit_code == 0, r.output
+    updated = json.loads((tmp_path / "h.spec.json").read_text())
+    assert updated["materials"]["wall"]["chosen"] == "minecraft:stonebrick"
+    assert updated["materials"]["roof"]["chosen"]  # from the rgb hint (no --roof-box)
+    assert (tmp_path / "run" / "debug_layout.png").is_file() and (tmp_path / "run" / "rectified.png").is_file()
+    r = runner.invoke(app, ["compile", "h.spec.json", "--out", "out"])
+    assert r.exit_code == 0, r.output

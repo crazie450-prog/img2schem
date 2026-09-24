@@ -155,10 +155,15 @@ class PaletteVariant(BaseModel):
     hex: str | None = None
     lab: tuple[float, float, float] | None = None
     alpha: float | None = None  # transparent fraction of the icon
+    # Cube icons only: the lit top face, which shows the block's true texture color (the icon average above is
+    # darkened by the shaded sides), and its variance (mean CIE76 distance of face pixels from the mean).
+    face_rgb: tuple[int, int, int] | None = None
+    face_lab: tuple[float, float, float] | None = None
+    variance: float | None = None
     icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
     # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml;
     # "infested": an infested block whose normal counterpart exists; "nbt_variant": the variant's meta can't be
-    # material for its shape (stairs 0/8, slab 0-7, log 0-3), so it is stored in tile-entity NBT
+    # material for its shape (stairs 0/8, slab 0-7, log 0-3, door/trapdoor/fence gate 0), so it lives in NBT
     flags: list[str] = Field(default_factory=list)
 
 
@@ -204,7 +209,7 @@ class Palette(BaseModel):
         name, meta = parse_block(block)
         blk = self.blocks.get(name)
         v = blk.variant_for(meta) if blk else None
-        return v.rgb if v else None
+        return (v.face_rgb or v.rgb) if v else None
 
 
 # ---------------------------------------------------------------- BuildSpec (SOW §5.3: v1 FacadeSpec + v2 fields)

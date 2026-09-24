@@ -302,6 +302,76 @@ def plan(
     console.print(f"next: img2schem compile {out}")
 
 
+@app.command()
+def materials(
+    spec_file: Path = typer.Argument(..., metavar="SPEC.json"),
+    photo: Path = typer.Argument(..., help="Photo of the building (JPEG/PNG/WEBP; HEIC with pillow-heif)."),
+    corners: str | None = typer.Option(
+        None, "--corners", help='Facade corners on the photo in pixels, e.g. "120,80 1500,95 1510,1100 110,1080".'
+    ),
+    roof_box: str | None = typer.Option(None, "--roof-box", help='A roof area on the photo: "x0,y0,x1,y1" pixels.'),
+    replace: bool = typer.Option(False, "--replace", help="Also replace blocks you already chose in the spec."),
+    run: Path | None = typer.Option(None, "--run", help="Working folder (default: out/<spec name>_photo)."),
+) -> None:
+    """Measure wall/window/door/roof colors on the photo and fill the spec's materials with matching blocks.
+
+    Corners are counted on the original photo; with no --corners the whole photo is treated as the wall."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    from pydantic import ValidationError
+
+    from img2schem.models import BuildSpec
+    from img2schem.palette.query import PaletteIndex
+    from img2schem.stages.ingest import IngestError, ingest
+    from img2schem.stages.materials import apply_materials, region_colors
+    from img2schem.stages.rectify import parse_corners, rectify
+
+    pal = _load_palette(required=True)
+    assert pal is not None
+    try:
+        spec = BuildSpec.model_validate_json(spec_file.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as e:
+        raise _fail(f"cannot read {spec_file}: {e}") from None
+    run = run or Path("out") / f"{spec_file.name.split('.')[0]}_photo"
+    try:
+        image = ingest(photo, run)
+        scale = json.loads((run / "image_meta.json").read_text())["resize_factor"]
+        pts = [(x * scale, y * scale) for x, y in parse_corners(corners)] if corners else None
+        rect = rectify(image, run, pts)
+        roof_px = None
+        if roof_box:
+            x0, y0, x1, y1 = (round(float(v) * scale) for v in roof_box.split(","))
+            roof_px = np.asarray(Image.open(image).convert("RGB"))[min(y0, y1) : max(y0, y1), min(x0, x1) : max(x0, x1)]
+    except (IngestError, ValueError) as e:
+        raise _fail(str(e)) from None
+    if not pts:
+        console.print("[yellow]warning:[/yellow] no --corners: using the whole photo as the wall (method none)")
+    wall = np.asarray(Image.open(rect.image).convert("RGB"))
+    regions = region_colors(wall, spec, roof_px)
+    notes = apply_materials(spec, regions, PaletteIndex(pal), replace=replace)
+    spec_file.write_text(spec.model_dump_json(indent=1), encoding="utf-8")
+
+    debug = Image.open(rect.image).convert("RGB")
+    draw = ImageDraw.Draw(debug)
+    h, w = wall.shape[:2]
+    for el in spec.elements:
+        if el.face == "front":
+            x0, y0, x1, y1 = el.bbox
+            draw.rectangle([x0 * w, y0 * h, x1 * w, y1 * h], outline=(255, 0, 180), width=3)
+            draw.text((x0 * w + 4, y0 * h + 4), el.kind, fill=(255, 0, 180))
+    debug.save(run / "debug_layout.png")
+
+    t = Table("role", "photo color", "chosen block", "next candidates")
+    for role, m in spec.materials.items():
+        if m.rgb:
+            hexc = "#{:02x}{:02x}{:02x}".format(*m.rgb)
+            t.add_row(role, f"[on {hexc}]    [/] {hexc}", m.chosen or "-", ", ".join(m.candidates[1:4]))
+    console.print(t)
+    for n in notes:
+        console.print(f"[yellow]note:[/yellow] {n}")
+    console.print(f"updated {spec_file}   check {run / 'debug_layout.png'}   next: img2schem compile {spec_file}")
+
+
 @app.command("compile")
 def compile_cmd(
     ops_file: Path = typer.Argument(..., metavar="OPS.json|SPEC.json"),

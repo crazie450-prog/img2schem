@@ -244,3 +244,26 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   below its lowest roof block with `gable_fill`; this one rule also produces the gable triangles and a shed's
   tall wall (replacing the separate code). Guarded by a test over every roof type × pitch × overhang 0–2.
 - **`debug_ops.png`** (R9.4): iso view with each op's cells in its own color and a legend, written by `compile`.
+
+### D-025 Photo stages: ingest, manual rectify, materials from photo colors
+- **True block colors from the icon's top face:** NEI's cube icons light the top face fully and shade the sides
+  (~70 % / ~45 %). The palette now stores `face_rgb`/`face_lab` (mean of the top-face diamond, read off the owner's
+  quartz icon) and `variance` for cube icons; they match real textures (stone bricks 123, bricks (146,100,87),
+  oak planks (157,128,79), quartz 236). Previews and matching use them. This replaces a global brightness factor.
+- **Matching (RM.2):** CIEDE2000 (verified on Sharma et al. 2005 reference pairs) + penalties (roof/trim +6 no
+  stairs, +3 no slab; wall +2 if variance > 8). Exact search: candidates are visited in color order until the
+  color distance alone exceeds the n-th best score (a fixed CIE76 preselection missed roof blocks with stairs).
+- **S0/S1:** `stages/ingest.py` (v1 R0.1–R0.3), `stages/rectify.py` (manual corners, any order; aspect from the
+  quad; long edge 1024; `rect.json`, `debug_rectify.png`). Auto corners (v1 R1.1c) and Claude corners come later.
+- **`img2schem materials SPEC.json PHOTO --corners … [--roof-box …]`:** wall = wall minus padded element boxes,
+  windows/doors = inner 60 % of their boxes, base = bottom 6 % (only if the spec has `base`), roof = the owner's
+  box on the photo. Median CIELAB per region. R2.4: automatic regions under 50 px or with L* < 20 fall back to the
+  spec's `rgb` hint; the owner-marked roof box skips the shadow test (dark roofs are common). RM.3 contrast guard
+  for trim. Existing `chosen` blocks are kept unless `--replace`.
+- **Windows keep clear glass** unless the photo color is clearly tinted (chroma ≥ 15): windows photograph dark
+  because of the room behind them.
+- **Doors, trapdoors, fence gates:** only variant 0 is placeable by metadata; other item variants are
+  `nbt_variant` (e.g. ExtraTrees doors).
+- **Synthetic facades** (`tests/fixtures/synthetic/gen.py`, §8.2): flat-color facade + roof band, known
+  homography, noise and vignetting. Tests: rectification ≤ 2 px RMS (A1) over 4 random perspectives; wall color
+  recovered and matched to the right block (A-M) through warp/noise/vignette.
