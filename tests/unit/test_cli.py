@@ -94,12 +94,12 @@ def test_plan_then_compile(tmp_path, monkeypatch):
     import shutil
     from pathlib import Path
 
-    src = Path("examples/house.spec.json").resolve()
+    src = Path("examples/brick_house.spec.json").resolve()
     _env(tmp_path, monkeypatch)
-    shutil.copy(src, tmp_path / "house.spec.json")
-    r = runner.invoke(app, ["plan", "house.spec.json"])
+    shutil.copy(src, tmp_path / "brick_house.spec.json")
+    r = runner.invoke(app, ["plan", "brick_house.spec.json"])
     assert r.exit_code == 0, r.output
-    assert (tmp_path / "house.ops.json").is_file()
-    r = runner.invoke(app, ["compile", "house.ops.json", "--out", "out"])
+    assert (tmp_path / "brick_house.ops.json").is_file()
+    r = runner.invoke(app, ["compile", "brick_house.ops.json", "--out", "out"])
     assert r.exit_code == 0, r.output
-    assert runner.invoke(app, ["plan", "house.spec.json", "--designer", "claude"]).exit_code == 4
+    assert runner.invoke(app, ["plan", "brick_house.spec.json", "--designer", "claude"]).exit_code == 4

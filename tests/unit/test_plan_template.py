@@ -12,7 +12,7 @@ from img2schem.palette.nei import import_nei
 from img2schem.palette.query import PaletteIndex
 from img2schem.stages.plan_template import PlanError, plan_template
 
-EXAMPLE = Path(__file__).parents[2] / "examples" / "house.spec.json"
+EXAMPLE = Path(__file__).parents[2] / "examples" / "brick_house.spec.json"
 GOLDEN = Path(__file__).parents[1] / "golden" / "house_spec.npz"
 
 

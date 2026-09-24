@@ -36,8 +36,8 @@ img2schem palette import <.minecraft\dumps>  # colors + shapes from NEI data dum
 img2schem palette search "stone brick" --shape stairs
 img2schem doctor                         # WorldEdit, schematics folder, world, palette
 
-img2schem plan examples/house.spec.json  # spec.json (measured description) -> house.ops.json (build program)
-img2schem compile examples/house.ops.json # ops.json -> .schematic + previews + report.json (+ WorldEdit folder)
+img2schem plan examples/brick_house.spec.json  # spec.json (measured description) -> brick_house.ops.json (build program)
+img2schem compile examples/brick_house.ops.json # ops.json -> .schematic + previews + report.json (+ WorldEdit folder)
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
 img2schem preview  some.schematic --out out/prev

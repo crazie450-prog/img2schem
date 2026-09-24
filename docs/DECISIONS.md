@@ -209,5 +209,5 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   side/back windows (one per storey per 6 blocks), RT.3 roof fallback to the nearest-colored usable block that
   has stairs/slab. Element kinds other than window/door are reported as warnings for a designer to handle.
 - **Role defaults** for glass/door/floor live in `palette/data/role_defaults.yaml` (vanilla, always present).
-- **Golden test:** `tests/golden/house_spec.npz` is the compiled `examples/house.spec.json`; regenerate with
+- **Golden test:** `tests/golden/house_spec.npz` is the compiled `examples/brick_house.spec.json`; regenerate with
   `UPDATE_GOLDEN=1 pytest tests/unit/test_plan_template.py` after an intentional change.
