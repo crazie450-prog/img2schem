@@ -48,3 +48,13 @@ should be resolved (not `id:<n>`) and the counts should match.
 | No "Missing ID mapping" / errors in chat | ✅ |
 | `inspect` on a WorldEdit-saved file | ✅ `reread.schematic`: names resolved, WEOrigin (247,106,−123) = house min corner |
 | Previews match the paste | ✅ |
+
+### Phase 1 (in progress) — engine and template, owner's GTNH world
+
+| Check | Result / notes |
+|---|---|
+| `examples/house.ops.json` (gable 1:1, logs, belt course, door) | ✅ pasted correctly |
+| `examples/cottage.ops.json` (palette families, hip roof, porch in `keep` mode, chimney) | ✅ pasted correctly |
+| `examples/brick_house.spec.json` via `compile SPEC.json` | ✅ after D-022 (flush windows; rebuilds replace img2schem's own file) |
+| Spec edits (storeys, roof type) take effect on recompile | ✅ after D-022 |
+| 1-storey variant keeps both door halves | ✅ after D-023 (a window had replaced the door's upper half) |
