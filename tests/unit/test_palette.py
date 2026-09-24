@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from fixtures.jars.make import nei_dumps
 
-from img2schem.palette.nei import classify, icon_filename_base, import_nei
+from img2schem.palette.nei import CUBE_IOU, classify, cube_outline_iou, exclude_patterns, icon_filename_base, import_nei
 from img2schem.util.color import srgb_to_lab
 
 
@@ -73,3 +73,33 @@ def test_lab_reference_values():
     lab = srgb_to_lab(np.array([[255, 255, 255], [0, 0, 0], [255, 0, 0]]))
     assert np.allclose(lab[0], [100, 0, 0], atol=0.05) and np.allclose(lab[1], [0, 0, 0], atol=0.05)
     assert np.allclose(lab[2], [53.24, 80.09, 67.20], atol=0.05)
+
+
+def test_cube_outline_and_exclusions(pal, tmp_path):
+    bricks = pal.blocks["ExtraUtilities:colorStoneBrick"]
+    anchor = pal.blocks["Railcraft:machine.alpha"]
+    assert bricks.shape == anchor.shape == "full_cube"  # unknown class, but the icon has the cube outline
+    assert [v.block for v in bricks.usable()] == ["ExtraUtilities:colorStoneBrick"]
+    assert anchor.variants[0].flags == ["excluded"] and anchor.usable() == []
+    assert pal.blocks["gregtech:gt.blockmachines"].shape == "unknown"  # no icons -> stays unknown
+    assert cube_outline_iou(tmp_path / "dumps" / "itempanel_icons" / "Red Wool.png") < CUBE_IOU  # a flat square
+
+
+@pytest.mark.parametrize(
+    ("text", "excluded"),
+    [
+        ("BlockColored Light Gray Wool", False),
+        ("BlockSandStone Sandstone", False),
+        ("BlockCarvable Stable Bricks", False),
+        ("BlockStorage Crystalline Alloy Block", False),
+        ("BlockBeaconBase Block of Aluminum", False),
+        ("BlockSand Sand", True),
+        ("BlockDrawersPack Larch Drawer", True),
+        ("BaseSubtypesBlock White Concrete Powder", True),
+        ("BlockOre Silicon Ore", True),
+        ("BlockMachine Item Loader", True),
+        ("x Growth Acceleration Unit (IV)", True),
+    ],
+)
+def test_exclude_patterns(text, excluded):
+    assert bool(exclude_patterns().search(text)) is excluded

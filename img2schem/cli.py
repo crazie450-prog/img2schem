@@ -171,29 +171,37 @@ def palette_import(
 
 @palette_app.command("report")
 def palette_report() -> None:
-    """Blocks per shape, color coverage, and the mods with the most blocks."""
+    """Blocks per shape, color coverage, what is usable for building, and the top mods."""
     pal = _load_palette(required=True)
     assert pal is not None
     variants = [v for b in pal.blocks.values() for v in b.variants]
     colored = sum(v.rgb is not None for v in variants)
     dark = sum("dark_icon" in v.flags for v in variants)
+    excluded = sum("excluded" in v.flags for v in variants)
+    usable = [b for b in pal.blocks.values() if b.usable()]
     console.print(
         f"{len(pal.blocks)} blocks, {len(variants)} variants, {colored} with a color "
-        f"({colored / max(len(variants), 1):.0%}), {dark} of them flagged dark_icon  [source: {pal.source}]"
+        f"({colored / max(len(variants), 1):.0%}); flagged: {dark} dark_icon, {excluded} excluded"
+        f"  [source: {pal.source}]"
+    )
+    console.print(
+        f"[bold]usable for building: {sum(len(b.usable()) for b in usable)} variants of {len(usable)} blocks[/bold] "
+        "(known shape, has a color, not flagged)"
     )
     console.print(
         "shapes: " + ", ".join(f"{k}={v}" for k, v in Counter(b.shape for b in pal.blocks.values()).most_common())
     )
-    t = Table("mod", "blocks", "variants", "colored", "known shape")
+    t = Table("mod", "blocks", "variants", "colored", "known shape", "usable variants")
     per: dict[str, list[int]] = {}
     for b in pal.blocks.values():
-        row = per.setdefault(b.mod, [0, 0, 0, 0])
+        row = per.setdefault(b.mod, [0, 0, 0, 0, 0])
         row[0] += 1
         row[1] += len(b.variants)
         row[2] += sum(v.rgb is not None for v in b.variants)
         row[3] += b.shape != "unknown"
-    for mod, (nb, nv, nc, ns) in sorted(per.items(), key=lambda kv: -kv[1][1])[:25]:
-        t.add_row(mod, str(nb), str(nv), str(nc), str(ns))
+        row[4] += len(b.usable())
+    for mod, (nb, nv, nc, ns, nu) in sorted(per.items(), key=lambda kv: -kv[1][4])[:25]:
+        t.add_row(mod, str(nb), str(nv), str(nc), str(ns), str(nu))
     console.print(t)
 
 
@@ -208,7 +216,7 @@ def palette_search(
     pal = _load_palette(required=True)
     assert pal is not None
     words = text.lower().split()
-    t = Table("block (name@meta)", "display name", "shape", "color")
+    t = Table("block (name@meta)", "display name", "shape", "color", "flags")
     hits = 0
     for b in pal.blocks.values():
         if (shape and b.shape != shape) or (mod and b.mod.lower() != mod.lower()):
@@ -217,7 +225,7 @@ def palette_search(
             hay = f"{v.block} {v.display}".lower()
             if all(w in hay for w in words):
                 color = f"[on {v.hex}]    [/] {v.hex}" if v.hex else "-"
-                t.add_row(v.block, v.display, b.shape, color)
+                t.add_row(v.block, v.display, b.shape, color, ", ".join(v.flags))
                 hits += 1
                 if hits >= n:
                     break

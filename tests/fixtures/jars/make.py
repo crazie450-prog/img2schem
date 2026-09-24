@@ -108,7 +108,9 @@ def nei_dumps(root: Path) -> Path:
         "malisisdoors:jungleFenceGate,3000,true,malisisdoors,net.malisis.doors.block.FenceGate,Jungle Fence Gate\n"
         "modernmarkings:wall_arrow,3001,true,modernmarkings,x.MarkingWall,Arrow\n"
         "Automagy:crystalBrain,3002,true,Automagy,x.BlockCrystalBrain,Crystalline Brain\n"
-        "gregtech:gt.blockmachines,3003,true,gregtech,gregtech.api.BaseMetaTileEntityBlock,Machine\n",
+        "gregtech:gt.blockmachines,3003,true,gregtech,gregtech.api.BaseMetaTileEntityBlock,Machine\n"
+        "ExtraUtilities:colorStoneBrick,3004,true,ExtraUtilities,x.BlockColor,Colored Stone Bricks\n"
+        "Railcraft:machine.alpha,3005,true,Railcraft,x.BlockMachine,World Anchor\n",
         encoding="utf-8",
     )
     (root / "itempanel.csv").write_text(
@@ -124,7 +126,9 @@ def nei_dumps(root: Path) -> Path:
         "gregtech:gt.blockmachines,3003,1,false,Machine\n"
         "gregtech:gt.blockmachines,3003,2,false,Machine\n"
         "gregtech:gt.blockmachines,3003,1086,false,Big Meta\n"
-        "minecraft:wool,35,5,true,White Wool\n",
+        "minecraft:wool,35,5,true,White Wool\n"
+        "ExtraUtilities:colorStoneBrick,3004,0,false,Colored Stone Bricks (White)\n"
+        "Railcraft:machine.alpha,3005,0,false,World Anchor\n",
         encoding="utf-8",
     )
     icons = root / "itempanel_icons"
@@ -143,4 +147,18 @@ def nei_dumps(root: Path) -> Path:
     }
     for name, rgb in colors.items():
         Image.new("RGBA", (16, 16), (*rgb, 255)).save(icons / name)
+    for name, rgb in {"Colored Stone Bricks (White).png": (200, 200, 200), "World Anchor.png": (90, 90, 90)}.items():
+        cube_icon(rgb).save(icons / name)
     return root
+
+
+def cube_icon(rgb: tuple[int, int, int]):
+    """A 16x16 icon with NEI's isometric full-cube outline."""
+    import numpy as np
+    from PIL import Image
+
+    from img2schem.palette.nei import _CUBE_OUTLINE
+
+    px = np.zeros((16, 16, 4), dtype=np.uint8)
+    px[_CUBE_OUTLINE] = (*rgb, 255)
+    return Image.fromarray(px)

@@ -156,16 +156,25 @@ class PaletteVariant(BaseModel):
     lab: tuple[float, float, float] | None = None
     alpha: float | None = None  # transparent fraction of the icon
     icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
-    flags: list[str] = Field(default_factory=list)  # "dark_icon": near-black icon, color may be a render failure
+    # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml
+    flags: list[str] = Field(default_factory=list)
 
 
 class PaletteBlock(BaseModel):
+    """A block and its variants. A variant is *usable* for building when the block's shape is known, the
+    variant has a color, and it has no flags."""
+
     name: str
     mod: str
     block_class: str
     display: str | None = None
     shape: Shape = "unknown"
     variants: list[PaletteVariant] = Field(default_factory=list)
+
+    def usable(self) -> list[PaletteVariant]:
+        if self.shape == "unknown":
+            return []
+        return [v for v in self.variants if v.rgb is not None and not v.flags]
 
     def variant_for(self, meta: int) -> PaletteVariant | None:
         """The material variant of a placed metadata value (orientation bits stripped per shape)."""

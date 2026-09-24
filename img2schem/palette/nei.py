@@ -8,7 +8,8 @@ Inputs, from NEI's Tools -> Data Dumps in the owner's GTNH instance (``.minecraf
   ``\\/:*?"<>|`` -> ``_``) with ``_2``, ``_3``... for repeats in item-panel order.
 
 An icon is linked to a row only when its display name has exactly as many icons as rows (then the Nth row
-gets the Nth icon); otherwise the variant has no color. Shapes come from the block's Java class and name.
+gets the Nth icon); otherwise the variant has no color. Shapes come from the block's Java class and name, then
+from the icon outline (plain cubes). Variants matching palette/data/exclude.yaml are flagged "excluded".
 """
 
 from __future__ import annotations
@@ -22,12 +23,13 @@ from pathlib import Path
 
 import numpy as np
 import yaml
+from PIL import Image
 
 from img2schem.models import Palette, PaletteBlock, PaletteVariant, Shape
 from img2schem.util.block import format_block
 from img2schem.util.color import hex_color, icon_color, srgb_to_lab
 
-IMPORTER_VERSION = "1"
+IMPORTER_VERSION = "2"
 # Icons darker than this (CIELAB L*) are flagged: NEI renders some mods' blocks (e.g. Botania metamorphic
 # stone) nearly black, but real black blocks (obsidian, black wool) look the same, so they are only flagged.
 DARK_ICON_L = 12.0
@@ -49,6 +51,28 @@ FULL_CUBE_CLASSES = {
     "Block", "BlockStone", "BlockCarvable", "BlockColored", "BlockCompressed", "BlockStoneBrick", "BlockSandStone",
     "BlockWood", "BlockQuartz", "BlockHardenedClay", "BlockClay", "BlockObsidian", "BlockNetherrack",
 }  # fmt: skip
+
+
+# 16x16 alpha outline of NEI's isometric full-cube icon (identical for every plain cube, e.g. minecraft:stone).
+_CUBE_OUTLINE = np.array(
+    [[c == "#" for c in row] for row in (
+        ".......##.......", ".....######.....", "...##########...", *([".##############."] * 10),
+        "...##########...", ".....######.....", ".......##.......",
+    )]
+)  # fmt: skip
+CUBE_IOU = 0.95  # stairs icons score ~0.92, slabs ~0.64 (measured on the owner's dump)
+
+
+def cube_outline_iou(icon: Path) -> float:
+    mask = np.asarray(Image.open(icon).convert("RGBA"))[..., 3] >= 128
+    if mask.shape != _CUBE_OUTLINE.shape:
+        return 0.0
+    return float((mask & _CUBE_OUTLINE).sum() / max((mask | _CUBE_OUTLINE).sum(), 1))
+
+
+def exclude_patterns() -> re.Pattern[str]:
+    text = resources.files("img2schem.palette").joinpath("data/exclude.yaml").read_text(encoding="utf-8")
+    return re.compile("|".join(f"(?:{p})" for p in yaml.safe_load(text)["patterns"]), re.IGNORECASE)
 
 
 def shape_overrides() -> dict[str, Shape]:
@@ -95,6 +119,7 @@ def import_nei(dumps: Path) -> Palette:
 
     pal = Palette(source=str(dumps), key=dumps_key(dumps))
     overrides = shape_overrides()
+    excluded = exclude_patterns()
     for r in blocks_csv:
         name = r["Name"]
         if name == "minecraft:air":
@@ -137,6 +162,15 @@ def import_nei(dumps: Path) -> Palette:
                 v.icon = str(icon)
                 if v.lab[0] < DARK_ICON_L:
                     v.flags.append("dark_icon")
+        if excluded.search(f"{blk.block_class.rsplit('.', 1)[-1]} {v.display}"):
+            v.flags.append("excluded")
         if all(existing.meta != meta for existing in blk.variants):
             blk.variants.append(v)
+
+    # Blocks without a known shape whose every icon has the plain-cube outline are full cubes.
+    for blk in pal.blocks.values():
+        icons = [v.icon for v in blk.variants if v.icon]
+        if blk.shape == "unknown" and blk.name not in overrides and icons:
+            if all(cube_outline_iou(Path(i)) >= CUBE_IOU for i in icons):
+                blk.shape = "full_cube"
     return pal

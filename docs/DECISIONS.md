@@ -141,3 +141,19 @@ Entries marked **verify** need a check on the owner's machine or test bed.
     `dark_icon` rather than dropped, since real black blocks look the same;
   - 3441 blocks have shape `unknown` (machines, plants, decorative blocks with generic classes). NEI doesn't
     record opacity, render type or tile entities; the SOW's helper mod (O2) would.
+
+### D-017 Which blocks the builder may use (owner decision: "any block with known shape and color")
+- **Context:** the SOW's curated `tiers.yaml` (v1 R7.3) lists 1.13+ vanilla names and no modded blocks. The
+  owner chose to allow any block whose shape and color are known rather than a list of building mods.
+- **Decision:** a variant is **usable** when its block's shape is known, it has a color, and it has no flags
+  (`PaletteBlock.usable()`). Two additions make that rule workable on GTNH:
+  - **cube outline:** a block with no shape from its class/name whose every icon has NEI's isometric cube
+    outline (IoU ≥ 0.95 with the stone icon's outline) is a `full_cube`. Measured on the owner's dump: known
+    cubes score 1.0, stairs 0.92, slabs 0.64;
+  - **exclude list** `palette/data/exclude.yaml`: regexes over "class + display name" for tile-entity blocks
+    (machines, drawers, chests, hatches…), ores, plants and gravity blocks. Matches are flagged `excluded`.
+- **Result on the owner's dump:** 4834 usable variants of 1240 blocks (chisel 1903, Ztones 411, etfuturum 264,
+  Botania 253, …).
+- **Consequences:** heuristic; some machine-like cubes may slip through and some fine blocks may be excluded.
+  The owner corrects them by editing `exclude.yaml` / `shape_overrides.yaml` and re-running `palette import`.
+  Role tiers (wall/roof/trim/…) are derived from this set by rules in Phase 1 instead of a curated list.

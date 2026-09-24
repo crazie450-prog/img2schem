@@ -62,7 +62,7 @@ def test_palette_import_search_report(tmp_path, monkeypatch):
     monkeypatch.setenv("IMG2SCHEM_CACHE_DIR", str(tmp_path / "cache"))
     r = runner.invoke(app, ["palette", "import", str(nei_dumps(tmp_path / "dumps"))])
     assert r.exit_code == 0, r.output
-    assert "flagged dark_icon" in r.output
+    assert "1 dark_icon" in r.output and "usable for building" in r.output
     r = runner.invoke(app, ["palette", "search", "aluminum", "--shape", "stairs"])
     assert r.exit_code == 0 and "chisel:aluminum_stairs.1@8" in r.output
     assert runner.invoke(app, ["palette", "import", str(tmp_path / "missing")]).exit_code == 4
