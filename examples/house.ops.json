@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "style": {
+    "wall": "minecraft:brick_block",
+    "base": "minecraft:stonebrick",
+    "floor": "minecraft:planks",
+    "roof": "minecraft:planks@1",
+    "roof.stairs": "minecraft:spruce_stairs",
+    "roof.slab": "minecraft:wooden_slab@1",
+    "trim": "minecraft:quartz_block",
+    "glass": "minecraft:glass_pane",
+    "door": "minecraft:wooden_door",
+    "post": "minecraft:log"
+  },
+  "ops": [
+    {"op": "floors", "id": "base", "label": "Foundation", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "ys": [0], "mat": "$base"},
+    {"op": "walls", "id": "walls", "label": "Walls - 2 storeys", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "y0": 1, "height": 8},
+    {"op": "floors", "id": "upper", "label": "Upper floor", "footprint": {"x0": 1, "z0": 1, "x1": 11, "z1": 7}, "ys": [5]},
+    {"op": "trim_band", "id": "belt", "label": "Belt course", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "y": 5, "outset": 0},
+    {"op": "openings", "id": "win-front-1", "label": "Front windows, ground floor", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "face": "front", "sills": [2], "w": 2, "h": 2, "count": 2, "spacing": 4},
+    {"op": "openings", "id": "win-front-2", "label": "Front windows, upper floor", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "face": "front", "sills": [6], "w": 2, "h": 2, "count": 3, "spacing": 2},
+    {"op": "openings", "id": "win-side", "label": "Side windows", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "face": "left", "sills": [2, 6], "w": 1, "h": 2, "count": 2, "spacing": 3},
+    {"op": "carve", "id": "door-gap", "label": "Door opening", "from": [6, 1, 0], "to": [6, 2, 0]},
+    {"op": "door", "id": "door", "label": "Front door", "pos": [6, 1, 0], "facing": "north"},
+    {"op": "column", "id": "post-w", "label": "Corner post", "pos": [0, 0], "y0": 1, "height": 8, "mat": "$post"},
+    {"op": "column", "id": "post-e", "label": "Corner post", "pos": [12, 0], "y0": 1, "height": 8, "mat": "$post"},
+    {"op": "roof", "id": "roof", "label": "Main roof - gable, 1:1", "footprint": {"x0": 0, "z0": 0, "x1": 12, "z1": 8}, "y0": 9, "type": "gable", "ridge": "x", "overhang": 1}
+  ]
+}

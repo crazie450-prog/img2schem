@@ -179,3 +179,20 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Registry names may contain inner spaces** (`Natura:Rare Tree`, 15 blocks); `parse_block` allows them.
 - **Known limit:** a display name shared by more rows than icons (e.g. "Marble": 18 rows, 17 icons) gets no
   colors at all, since the missing icon can't be identified. `chisel:marble` is affected.
+
+### D-020 Engine: first op set, 1.7.10 metadata only, paste offset from the compiled origin
+- **Scope:** `box, walls, floors, door, openings, roof, column, beam, trim_band, carve, set` (docs/DSL.md).
+  Deferred: `facade_from_spec` (with the template generator), `railing, vary, define/place, array, mirror`,
+  polygon footprints.
+- **States (RE.3–RE.5, re-scoped):** in 1.7.10 the game computes pane/fence/wall connections and stair corner
+  shapes, so the engine only writes metadata: stairs direction/upside-down, door halves/facing/hinge, log axis,
+  vanilla top slabs (bit 3) or the Chisel `_top` block.
+- **Roofs:** gable/hip/shed/flat × pitch 1:1 (stairs), 1:2 (bottom/top slabs), 2:1 (stairs over full blocks).
+  Odd-width gables get a full-block ridge; gable fill stops just below the roof; a shed's high-side overhang
+  stays level. Checked by eye on previews and by unit tests.
+- **Materials:** `$slot`, `$slot.<family member>` (style override first, then the palette family), or a
+  literal. Without a palette the engine guesses shapes from vanilla-style names, so hand-written builds and
+  tests work offline.
+- **Paste offset:** `WEOffset = (-(W//2), -origin_y - 1, -origin_z + 2)`, so the design's z = 0 plane still lands
+  2 blocks ahead when a roof overhangs in front (design z < 0).
+- **Not yet done from RE.8:** incremental recompiles (only needed for the Phase 3 UI).

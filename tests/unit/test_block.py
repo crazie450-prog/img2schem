@@ -16,7 +16,9 @@ def test_parse_and_format():
     assert parse_block("BuildCraft|Factory:tankBlock") == ("BuildCraft|Factory:tankBlock", 0)
 
 
-@pytest.mark.parametrize("bad", ["stone", "1", "minecraft:wool@16", "minecraft:wool@x", "minecraft: a", "minecraft:a ", "minecraft:"])
+@pytest.mark.parametrize(
+    "bad", ["stone", "1", "minecraft:wool@16", "minecraft:wool@x", "minecraft: a", "minecraft:a ", "minecraft:"]
+)
 def test_malformed(bad):
     with pytest.raises(ValueError):
         parse_block(bad)

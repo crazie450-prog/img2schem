@@ -66,3 +66,25 @@ def test_palette_import_search_report(tmp_path, monkeypatch):
     r = runner.invoke(app, ["palette", "search", "aluminum", "--shape", "stairs"])
     assert r.exit_code == 0 and "chisel:aluminum_stairs.1@8" in r.output
     assert runner.invoke(app, ["palette", "import", str(tmp_path / "missing")]).exit_code == 4
+
+
+def test_compile_example_house(tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    from img2schem.stages.export_schem import read_schematic
+
+    src = Path("examples/house.ops.json").resolve()
+    _env(tmp_path, monkeypatch)
+    shutil.copy(src, tmp_path / "house.ops.json")
+    r = runner.invoke(app, ["compile", "house.ops.json", "--out", "out"])
+    assert r.exit_code == 0, r.output
+    grid, info = read_schematic(tmp_path / "out" / "house.schematic")
+    assert info.offset == (-(grid.shape[0] // 2), -1, 1)  # roof overhang at design z = -1
+    report = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert report["ops_count"] == 12 and report["validation"]["ok"]
+    assert (tmp_path / "out" / "preview_iso.png").is_file()
+    (tmp_path / "bad.json").write_text('{"ops": [{"op": "walls", "id": "w", "footprint": {"x0": 0, "z0": 0, "x1": 3, '
+                                       '"z1": 3}, "height": 2, "mat": "$nope"}]}')  # fmt: skip
+    r = runner.invoke(app, ["compile", "bad.json", "--out", "out2"])
+    assert r.exit_code == 2 and "no slot" in r.output

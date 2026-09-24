@@ -264,6 +264,77 @@ def _load(path: Path) -> tuple[BlockGrid, SchemInfo]:
         raise _fail(f"cannot read {path}: {e}", EXIT_VALIDATION) from None
 
 
+@app.command("compile")
+def compile_cmd(
+    ops_file: Path = typer.Argument(..., metavar="OPS.json"),
+    out: Path | None = typer.Option(None, "--out", help="Output directory (default: out/<name>_<timestamp>)."),
+    name: str | None = typer.Option(None, "--name", help="Schematic name (default: the file's stem)."),
+    copy: bool = typer.Option(True, "--copy/--no-copy", help="Also copy into the instance's WorldEdit folder."),
+) -> None:
+    """Compile ops.json (S4) -> validate (S5) -> .schematic, previews, report.json (S7). No API calls."""
+    import time
+
+    from pydantic import ValidationError
+
+    from img2schem.engine.compiler import CompileError, compile_ops, paste_offset
+    from img2schem.engine.ops import OpsDoc
+    from img2schem.palette.query import PaletteIndex
+    from img2schem.stages.export_schem import SchemMeta, copy_to_schematics_dir, write_schematic
+    from img2schem.stages.preview import write_previews
+    from img2schem.stages.validate import failed, validate_grid, write_issues
+
+    s = load_settings()
+    t0 = time.perf_counter()
+    try:
+        doc = OpsDoc.model_validate_json(ops_file.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as e:
+        raise _fail(f"cannot read {ops_file}: {e}") from None
+    pal = _load_palette()
+    try:
+        compiled = compile_ops(doc, PaletteIndex(pal) if pal else None, s.budgets.hard_max_total)
+    except CompileError as e:
+        raise _fail(str(e), EXIT_VALIDATION) from None
+    t_compile = time.perf_counter() - t0
+
+    name = name or ops_file.name.removesuffix(".json").removesuffix(".ops")
+    out = out or Path("out") / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
+    out.mkdir(parents=True, exist_ok=True)
+    grid = compiled.grid.compact()
+    issues = validate_grid(grid, s.budgets, _active_palette())
+    write_issues(issues, out / "issues.json")
+    for i in issues:
+        console.print(f"{i.severity} {i.rule}: {i.message}")
+    if failed(issues):
+        raise _fail("validation failed; see issues.json", EXIT_VALIDATION)
+
+    grid.save(out)
+    inst = _active_instance(None) if s.instance else None
+    meta = SchemMeta(
+        name, inst.name if inst else None, inst.mc_version if inst else None, inst.loader if inst else None
+    )
+    schem = write_schematic(out / f"{name}.schematic", grid, offset=paste_offset(compiled), meta=meta)
+    write_previews(grid, out, palette=pal)
+    report = {
+        "name": name,
+        "ops_file": str(ops_file),
+        "dims_wxhxl": list(grid.shape),
+        "nonair": grid.nonair(),
+        "palette_size": len(grid.palette) - 1,
+        "mods_required": mods_required(grid.palette),
+        "ops_count": len(doc.ops),
+        "set_cells_used": sum(len(o.cells) for o in doc.ops if o.op == "set"),
+        "time_compile_s": round(t_compile, 3),
+        "validation": {"ok": True, "issues": [i.model_dump() for i in issues]},
+        "ops": [vars(sm) for sm in compiled.summaries],
+        "counts": dict(sorted(grid.counts().items(), key=lambda kv: -kv[1])),
+    }
+    (out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    console.print(f"{schem}  ({grid.shape[0]}x{grid.shape[1]}x{grid.shape[2]}, {grid.nonair()} blocks)")
+    if copy and inst and inst.worldedit and inst.schematics_dir and s.export.write_to_instance:
+        target = copy_to_schematics_dir(schem, Path(inst.schematics_dir))
+        console.print(f"copied -> {target}   in game: //schem load {target.stem}   then //paste -a")
+
+
 @app.command()
 def inspect(file: Path, as_json: bool = JsonOpt) -> None:
     """Dims, blocks, counts and mods required of a .schematic."""
