@@ -18,7 +18,8 @@ phase.
 ## Paste checks
 
 In game: `//schem list`, `//schem load img2schem_cube`, stand where the build should go **facing south**,
-`//paste -a`. Expected: the front face 2 blocks in front of you, centered on you. `//undo` removes it.
+`//paste -a`. Expected: the front face 2 blocks in front of you, centered on you, with the bottom layer
+replacing the block you stand on (D-015). `//undo` removes it.
 
 - **Cube:** white wool face toward you, red wool face on your **right**, gold block at the top **left** corner
   of the white face.
@@ -42,7 +43,7 @@ should be resolved (not `id:<n>`) and the counts should match.
 | `instance list` shows WorldEdit = yes | ✅ |
 | `world use` lists blocks per mod | ✅ 4357 blocks, 150 mods (`New World (1)`) |
 | `img2schem_cube` orientation + offset | ✅ white toward player, red on the right, gold top-left |
-| `img2schem_house`: stairs, door, panes | ✅ paste at (257,106,−125): front wall z=−123, x=247..266, door at (257,107,−123) meta 3; floor at the player's feet level |
+| `img2schem_house`: stairs, door, panes | ✅ paste at (257,106,−125): front wall z=−123, x=247..266, door at (257,107,−123) meta 3; floor at the player's feet level (since changed to one block lower, D-015) |
 | `img2schem_modded` pastes cleanly | ✅ `chisel:aluminum_stairs.1` + `chisel:woolen_clay`: both stair rings rise toward the center; only the north aluminum row upside-down, as designed |
 | No "Missing ID mapping" / errors in chat | ✅ |
 | `inspect` on a WorldEdit-saved file | ✅ `reread.schematic`: names resolved, WEOrigin (247,106,−123) = house min corner |

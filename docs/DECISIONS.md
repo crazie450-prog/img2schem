@@ -80,7 +80,7 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   high nibble); on load it maps names to the current world's IDs (unknown names → air, with a warning).
   Without a mapping, IDs are used as-is with classic WorldEdit nibble order.
 - **Decision:** always write `SchematicaMapping` with local IDs (air 0, then 1..N), `Blocks`/`Data`/`AddBlocks`,
-  `WEOrigin = 0` and `WEOffset = [-(W//2), 0, 2]` (WorldEdit pastes the min corner at player + WEOffset).
+  `WEOrigin = 0` and `WEOffset = [-(W//2), 0, 2]` (y changed to −1 by D-015) (WorldEdit pastes the min corner at player + WEOffset).
 - **Verification:** `WeCheck` harness (not committed; it needs the WorldEdit jar) ran the jar's own
   `RemappingBlockIOFactory` serializer/deserializer against our writer/reader in both directions, with
   50–2000 distinct blocks and world IDs different from file IDs: every cell matched.
@@ -112,3 +112,10 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   doors. Modded stairs may use their own metadata scheme (Chisel packs texture variants into metadata), so
   orientation metadata must be known per block, not assumed from vanilla (feeds SOW_GTNH Q1).
   Chisel stairs (`chisel:aluminum_stairs.1`, meta 0–7) were verified in game to follow the vanilla table.
+
+### D-015 Bottom layer replaces the ground under the player (owner decision)
+- **Context:** Phase 0 pastes put the build's bottom layer (the floor) at the player's feet level, one block
+  above the ground they stand on. SOW §4.3 specified `Offset = [-(W//2), 0, 2]`.
+- **Decision:** `WEOffset = [-(W//2), -1, 2]`, so the floor replaces the ground layer and builds sit flush on terrain.
+- **Consequences:** stand on the ground where the build goes before `//paste -a`; one block of ground under
+  the footprint is replaced by the floor.

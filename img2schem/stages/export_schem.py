@@ -35,12 +35,13 @@ MAX_LOCAL_ID = 4095  # 12 bits: Blocks + AddBlocks
 
 
 def front_center_offset(width: int) -> tuple[int, int, int]:
-    """Paste so the bottom-center of the front facade (z = 0) lands 2 blocks south of the player (§4.3).
+    """Paste so the bottom-center of the front facade (z = 0) lands 2 blocks south of the player, with the
+    build's bottom layer replacing the block the player stands on (§4.3, owner decision D-015).
 
     WorldEdit sets the clipboard origin to ``min - WEOffset``, so ``//paste`` puts the min corner at
-    ``player + WEOffset``. To be confirmed on the test bed (docs/TEST_BED.md); change here only.
+    ``player + WEOffset`` (verified in game, docs/TEST_BED.md). Change here only.
     """
-    return (-(width // 2), 0, 2)
+    return (-(width // 2), -1, 2)
 
 
 def mods_required(palette: list[str]) -> list[str]:

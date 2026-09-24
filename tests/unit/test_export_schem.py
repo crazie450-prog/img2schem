@@ -52,7 +52,7 @@ def test_layout_tags_and_offset(tmp_path):
     f = nbtlib.load(str(p))
     assert f.root_name == "Schematic" and str(f["Materials"]) == "Alpha"
     assert (int(f["Width"]), int(f["Height"]), int(f["Length"])) == (7, 3, 5)
-    assert [int(f[f"WEOffset{a}"]) for a in "XYZ"] == [-3, 0, 2] == list(front_center_offset(7))
+    assert [int(f[f"WEOffset{a}"]) for a in "XYZ"] == [-3, -1, 2] == list(front_center_offset(7))
     assert [int(f[f"WEOrigin{a}"]) for a in "XYZ"] == [0, 0, 0]
     assert {k: int(v) for k, v in f["SchematicaMapping"].items()} == {
         "minecraft:stonebrick": 1,
