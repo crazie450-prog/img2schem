@@ -1,5 +1,5 @@
 """`img2schem` command line (SOW §5.2, re-scoped for GTNH / 1.7.10 in docs/SOW_GTNH.md).
-Phase 0 commands: instance, world, inspect, preview, validate, doctor."""
+Commands: instance, world, palette, inspect, preview, validate, doctor."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from rich.table import Table
 from img2schem.config import load_settings, save_user_setting, user_config_path
 from img2schem.instance.discover import discover_all, resolve_instance
 from img2schem.instance.world import list_worlds, read_world_palette, resolve_world
-from img2schem.models import BlockGrid, InstanceInfo, WorldPalette
+from img2schem.models import BlockGrid, InstanceInfo, Palette, WorldPalette
 from img2schem.stages.export_schem import SchemInfo, mods_required, read_schematic
 from img2schem.util.block import namespace
 
@@ -26,7 +26,9 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 instance_app = typer.Typer(no_args_is_help=True, help="Discover and select Minecraft instances.")
 world_app = typer.Typer(no_args_is_help=True, help="Select the world whose block registry validates builds.")
 app.add_typer(instance_app, name="instance")
+palette_app = typer.Typer(no_args_is_help=True, help="Block colors and shapes, imported from NEI data dumps.")
 app.add_typer(world_app, name="world")
+app.add_typer(palette_app, name="palette")
 console = Console()
 err = Console(stderr=True)
 
@@ -135,6 +137,95 @@ def world_use(ref: str = typer.Argument(..., help="Save folder name, or a path t
     console.print(t)
 
 
+# ---------------------------------------------------------------- palette
+
+
+def _load_palette(required: bool = False) -> Palette | None:
+    path = load_settings().palette
+    if path and Path(path).is_file():
+        return Palette.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    if required:
+        raise _fail("no palette imported; run `img2schem palette import <.minecraft/dumps folder>`")
+    return None
+
+
+@palette_app.command("import")
+def palette_import(
+    dumps: Path = typer.Argument(..., help="NEI dumps folder: block.csv, itempanel.csv, itempanel_icons/."),
+) -> None:
+    """Build the palette (shapes, variants, colors) from NEI data dumps and make it active."""
+    from img2schem.palette.nei import dumps_key, import_nei
+
+    try:
+        out = load_settings().cache_path / "palettes" / dumps_key(dumps) / "palette.json"
+        if not out.is_file():
+            pal = import_nei(dumps)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(pal.model_dump_json(), encoding="utf-8")
+    except (OSError, KeyError, ValueError) as e:
+        raise _fail(f"cannot import {dumps}: {e}") from None
+    save_user_setting("palette", str(out))
+    console.print(f"Palette -> {out}")
+    palette_report()
+
+
+@palette_app.command("report")
+def palette_report() -> None:
+    """Blocks per shape, color coverage, and the mods with the most blocks."""
+    pal = _load_palette(required=True)
+    assert pal is not None
+    variants = [v for b in pal.blocks.values() for v in b.variants]
+    colored = sum(v.rgb is not None for v in variants)
+    dark = sum("dark_icon" in v.flags for v in variants)
+    console.print(
+        f"{len(pal.blocks)} blocks, {len(variants)} variants, {colored} with a color "
+        f"({colored / max(len(variants), 1):.0%}), {dark} of them flagged dark_icon  [source: {pal.source}]"
+    )
+    console.print(
+        "shapes: " + ", ".join(f"{k}={v}" for k, v in Counter(b.shape for b in pal.blocks.values()).most_common())
+    )
+    t = Table("mod", "blocks", "variants", "colored", "known shape")
+    per: dict[str, list[int]] = {}
+    for b in pal.blocks.values():
+        row = per.setdefault(b.mod, [0, 0, 0, 0])
+        row[0] += 1
+        row[1] += len(b.variants)
+        row[2] += sum(v.rgb is not None for v in b.variants)
+        row[3] += b.shape != "unknown"
+    for mod, (nb, nv, nc, ns) in sorted(per.items(), key=lambda kv: -kv[1][1])[:25]:
+        t.add_row(mod, str(nb), str(nv), str(nc), str(ns))
+    console.print(t)
+
+
+@palette_app.command("search")
+def palette_search(
+    text: str = typer.Argument(..., help="Words matched against block names and display names."),
+    shape: str | None = typer.Option(None, "--shape"),
+    mod: str | None = typer.Option(None, "--mod"),
+    n: int = typer.Option(30, "--n"),
+) -> None:
+    """Find variants by name, e.g. `palette search "stone brick" --shape stairs`."""
+    pal = _load_palette(required=True)
+    assert pal is not None
+    words = text.lower().split()
+    t = Table("block (name@meta)", "display name", "shape", "color")
+    hits = 0
+    for b in pal.blocks.values():
+        if (shape and b.shape != shape) or (mod and b.mod.lower() != mod.lower()):
+            continue
+        for v in b.variants:
+            hay = f"{v.block} {v.display}".lower()
+            if all(w in hay for w in words):
+                color = f"[on {v.hex}]    [/] {v.hex}" if v.hex else "-"
+                t.add_row(v.block, v.display, b.shape, color)
+                hits += 1
+                if hits >= n:
+                    break
+        if hits >= n:
+            break
+    console.print(t if hits else "no matches")
+
+
 # ---------------------------------------------------------------- files
 
 
@@ -191,7 +282,7 @@ def preview(
     from img2schem.stages.preview import write_previews
 
     grid, _ = _load(file)
-    for p in write_previews(grid, out or file.parent, px=max(px, 8)):
+    for p in write_previews(grid, out or file.parent, px=max(px, 8), palette=_load_palette()):
         console.print(str(p))
 
 
@@ -259,6 +350,11 @@ def doctor() -> None:
             line(False, f"world: {e}")
     else:
         line(False, "no world selected (`img2schem world list`, then `img2schem world use NAME`)")
+    colors = _load_palette()
+    line(
+        colors is not None,
+        f"palette: {len(colors.blocks)} blocks" if colors else "no palette (`img2schem palette import DUMPS`)",
+    )
     for w in i.warnings:
         console.print(f"[yellow]warning:[/yellow] {w}")
 

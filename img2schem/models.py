@@ -140,6 +140,57 @@ class WorldPalette(BaseModel):
         return None
 
 
+Shape = Literal[
+    "full_cube", "stairs", "slab", "wall", "fence", "fence_gate", "pane", "door", "trapdoor", "log", "unknown"
+]
+
+
+class PaletteVariant(BaseModel):
+    """One placeable variant (block + metadata) as listed in NEI's item panel."""
+
+    block: str  # name@meta
+    meta: int
+    display: str
+    rgb: tuple[int, int, int] | None = None  # average icon color (None: no reliable icon)
+    hex: str | None = None
+    lab: tuple[float, float, float] | None = None
+    alpha: float | None = None  # transparent fraction of the icon
+    icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
+    flags: list[str] = Field(default_factory=list)  # "dark_icon": near-black icon, color may be a render failure
+
+
+class PaletteBlock(BaseModel):
+    name: str
+    mod: str
+    block_class: str
+    display: str | None = None
+    shape: Shape = "unknown"
+    variants: list[PaletteVariant] = Field(default_factory=list)
+
+    def variant_for(self, meta: int) -> PaletteVariant | None:
+        """The material variant of a placed metadata value (orientation bits stripped per shape)."""
+        material = {"stairs": meta & 8, "slab": meta & 7, "log": meta & 3}.get(self.shape, meta)
+        by_meta = {v.meta: v for v in self.variants}
+        return by_meta.get(material) or by_meta.get(meta) or by_meta.get(0)
+
+
+class Palette(BaseModel):
+    """Every block of the instance with shape and per-variant colors (built from NEI dumps, D-016)."""
+
+    version: int = 1
+    source: str
+    key: str
+    blocks: dict[str, PaletteBlock] = Field(default_factory=dict)
+
+    def color(self, block: str) -> tuple[int, int, int] | None:
+        from img2schem.util.block import parse_block
+
+        name, meta = parse_block(block)
+        blk = self.blocks.get(name)
+        v = blk.variant_for(meta) if blk else None
+        return v.rgb if v else None
+
+
 # ---------------------------------------------------------------- validation
 
 

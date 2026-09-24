@@ -92,3 +92,55 @@ GTNH_BLOCKS = {
     "chisel:marble": 2051,
     "chisel:marble_stairs.0": 2052,
 }
+
+
+def nei_dumps(root: Path) -> Path:
+    """A tiny NEI dump: block.csv, itempanel.csv and itempanel_icons/ with solid-color icons."""
+    from PIL import Image
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "block.csv").write_text(
+        "Name,ID,Has Item,Mod,Class,Display Name\n"
+        "minecraft:air,0,false,null,net.minecraft.block.BlockAir,null\n"
+        "minecraft:wool,35,true,minecraft,net.minecraft.block.BlockColored,Wool\n"
+        "minecraft:stone_slab,44,true,minecraft,net.minecraft.block.BlockStoneSlab,Stone Slab\n"
+        "chisel:aluminum_stairs.1,2032,true,chisel,team.chisel.block.BlockCarvableStairs,Aluminum Stairs\n"
+        "malisisdoors:jungleFenceGate,3000,true,malisisdoors,net.malisis.doors.block.FenceGate,Jungle Fence Gate\n"
+        "modernmarkings:wall_arrow,3001,true,modernmarkings,x.MarkingWall,Arrow\n"
+        "Automagy:crystalBrain,3002,true,Automagy,x.BlockCrystalBrain,Crystalline Brain\n"
+        "gregtech:gt.blockmachines,3003,true,gregtech,gregtech.api.BaseMetaTileEntityBlock,Machine\n",
+        encoding="utf-8",
+    )
+    (root / "itempanel.csv").write_text(
+        "Item Name,Item ID,Item meta,Has NBT,Display Name\n"
+        "minecraft:wool,35,0,false,White Wool\n"
+        "minecraft:wool,35,14,false,Red Wool\n"
+        "minecraft:stone_slab,44,0,false,Stone Slab\n"
+        "minecraft:stone_slab,44,1,false,Sandstone Slab\n"
+        "GalacticraftAmunRa:tile.alucrate.stairs,1284,0,false,Aluminum Stairs\n"
+        "chisel:aluminum_stairs.1,2032,0,false,Aluminum Stairs\n"
+        "chisel:aluminum_stairs.1,2032,8,false,Aluminum Stairs\n"
+        "Automagy:crystalBrain,3002,0,false,Crystalline Brain: Air\n"
+        "gregtech:gt.blockmachines,3003,1,false,Machine\n"
+        "gregtech:gt.blockmachines,3003,2,false,Machine\n"
+        "gregtech:gt.blockmachines,3003,1086,false,Big Meta\n"
+        "minecraft:wool,35,5,true,White Wool\n",
+        encoding="utf-8",
+    )
+    icons = root / "itempanel_icons"
+    icons.mkdir(exist_ok=True)
+    colors = {
+        "White Wool.png": (240, 240, 240),
+        "White Wool_2.png": (0, 0, 0),  # the NBT row's icon
+        "Red Wool.png": (160, 40, 35),
+        "Stone Slab.png": (160, 160, 160),
+        "Sandstone Slab.png": (215, 205, 150),
+        "Aluminum Stairs.png": (10, 200, 10),  # Galacticraft's (first row)
+        "Aluminum Stairs_2.png": (130, 130, 130),
+        "Aluminum Stairs_3.png": (110, 110, 110),
+        "Crystalline Brain_ Air.png": (5, 5, 5),
+        "Machine.png": (1, 2, 3),  # 2 rows but 1 icon: ambiguous -> no color
+    }
+    for name, rgb in colors.items():
+        Image.new("RGBA", (16, 16), (*rgb, 255)).save(icons / name)
+    return root

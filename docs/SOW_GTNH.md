@@ -48,7 +48,8 @@ Definition of Done (owner) — **all passed 2026-09-23; Phase 0 closed** (docs/T
 
 ## Open questions
 
-- **Q1 — Where do colors, metadata meanings and shapes come from?** 1.7.10 blocks have no model files, and
+- **Q1 — Where do colors, metadata meanings and shapes come from?** *Decided for Phase 1: (a) NEI dumps,
+  `img2schem palette import` (D-016); (b) stays the upgrade path for the `unknown` shapes.* 1.7.10 blocks have no model files, and
   GTNH has thousands of blocks (many GregTech blocks are machines drawn by code). Options, to decide after
   Phase 0 with real files from the owner:
   - (a) **NEI data dumps** already in GTNH (block list, item panel with damage values and names, optionally

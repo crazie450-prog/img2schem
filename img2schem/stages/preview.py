@@ -1,6 +1,6 @@
 """S7 previews (R9.1, Phase 0 subset): orthographic front/side/top + isometric PNGs, PIL only.
 
-Phase 0 colors each block with a flat hash color; real block colors replace this in Phase 1.
+Blocks are colored from the palette (NEI icon colors) when one is given, else with a flat hash color.
 Views follow the in-game orientation (SOW §4.3):
   front: seen from the north (-Z) looking south, so east (+X) is on the image's LEFT;
   side:  seen from the west (-X) looking east, so south (+Z) is on the RIGHT;
@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from img2schem.models import BlockGrid
+from img2schem.models import BlockGrid, Palette
 
 BG = (246, 246, 244)
 SHADE = {"top": 1.0, "front": 0.85, "side": 0.7}
@@ -29,8 +29,9 @@ def block_color(block: str) -> tuple[int, int, int]:
     return tuple(int(60 + b * 0.6) for b in d[:3])  # type: ignore[return-value]
 
 
-def _palette_rgb(grid: BlockGrid) -> np.ndarray:
-    return np.array([BG] + [block_color(s) for s in grid.palette[1:]], dtype=np.float32)
+def _palette_rgb(grid: BlockGrid, palette: Palette | None = None) -> np.ndarray:
+    colors = [(palette.color(b) if palette else None) or block_color(b) for b in grid.palette[1:]]
+    return np.array([BG, *colors], dtype=np.float32)
 
 
 def _first_hit(idx: np.ndarray, axis: int) -> np.ndarray:
@@ -54,26 +55,26 @@ def _to_image(cells: np.ndarray, rgb: np.ndarray, shade: float, px: int) -> Imag
     return Image.fromarray(np.clip(big, 0, 255).astype(np.uint8))
 
 
-def render_front(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_front(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx, axis=2)  # [X, Y]
-    return _to_image(cells[::-1, ::-1].T, _palette_rgb(grid), SHADE["front"], px)
+    return _to_image(cells[::-1, ::-1].T, _palette_rgb(grid, palette), SHADE["front"], px)
 
 
-def render_side(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_side(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx, axis=0)  # [Y, Z]
-    return _to_image(cells[::-1, :], _palette_rgb(grid), SHADE["side"], px)
+    return _to_image(cells[::-1, :], _palette_rgb(grid, palette), SHADE["side"], px)
 
 
-def render_top(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_top(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx[:, ::-1, :], axis=1)  # [X, Z], scanning down from the top
-    return _to_image(cells.T, _palette_rgb(grid), SHADE["top"], px)
+    return _to_image(cells.T, _palette_rgb(grid, palette), SHADE["top"], px)
 
 
-def render_iso(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_iso(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower)."""
     idx = grid.idx
     xs, ys, zs = idx.shape
-    rgb = _palette_rgb(grid)
+    rgb = _palette_rgb(grid, palette)
     s = px
     pad = np.pad(idx != 0, 1)
     solid = pad[1:-1, 1:-1, 1:-1]
@@ -112,11 +113,11 @@ def render_iso(grid: BlockGrid, px: int = 8) -> Image.Image:
     return img
 
 
-def write_previews(grid: BlockGrid, out_dir: Path, px: int = 8) -> list[Path]:
+def write_previews(grid: BlockGrid, out_dir: Path, px: int = 8, palette: Palette | None = None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for name, fn in (("front", render_front), ("side", render_side), ("top", render_top), ("iso", render_iso)):
         p = out_dir / f"preview_{name}.png"
-        fn(grid, px).save(p)
+        fn(grid, px, palette).save(p)
         paths.append(p)
     return paths

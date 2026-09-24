@@ -19,7 +19,7 @@ from pathlib import Path
 
 import typer
 
-from img2schem.cli import _active_instance, _active_palette
+from img2schem.cli import _active_instance, _active_palette, _load_palette
 from img2schem.config import load_settings
 from img2schem.models import BlockGrid
 from img2schem.stages.export_schem import SchemMeta, copy_to_schematics_dir, write_schematic
@@ -123,7 +123,7 @@ def main(
         )
         schem = write_schematic(d / f"{name}.schematic", grid, meta=meta)
         grid.save(d)
-        write_previews(grid, d)
+        write_previews(grid, d, palette=_load_palette())
         typer.echo(f"{schem}  ({grid.shape[0]}x{grid.shape[1]}x{grid.shape[2]})")
         if copy and instance and instance.worldedit and instance.schematics_dir and settings.export.write_to_instance:
             target = copy_to_schematics_dir(schem, Path(instance.schematics_dir))

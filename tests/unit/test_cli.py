@@ -53,3 +53,16 @@ def test_instance_and_world_selection(tmp_path, monkeypatch, gtnh):
     r = runner.invoke(app, ["validate", str(p)])
     assert r.exit_code == 2 and "not_registered" in r.output
     assert runner.invoke(app, ["doctor"]).exit_code == 0
+
+
+def test_palette_import_search_report(tmp_path, monkeypatch):
+    from fixtures.jars.make import nei_dumps
+
+    _env(tmp_path, monkeypatch)
+    monkeypatch.setenv("IMG2SCHEM_CACHE_DIR", str(tmp_path / "cache"))
+    r = runner.invoke(app, ["palette", "import", str(nei_dumps(tmp_path / "dumps"))])
+    assert r.exit_code == 0, r.output
+    assert "flagged dark_icon" in r.output
+    r = runner.invoke(app, ["palette", "search", "aluminum", "--shape", "stairs"])
+    assert r.exit_code == 0 and "chisel:aluminum_stairs.1@8" in r.output
+    assert runner.invoke(app, ["palette", "import", str(tmp_path / "missing")]).exit_code == 4

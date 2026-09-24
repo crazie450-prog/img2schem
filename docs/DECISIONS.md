@@ -119,3 +119,25 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Decision:** `WEOffset = [-(W//2), -1, 2]`, so the floor replaces the ground layer and builds sit flush on terrain.
 - **Consequences:** stand on the ground where the build goes before `//paste -a`; one block of ground under
   the footprint is replaced by the floor.
+
+## 2026-09-24 · Phase 1 palette
+
+### D-016 Palette from NEI data dumps (resolves SOW_GTNH Q1 for now)
+- **Context:** 1.7.10 has no block model files. The owner exported NEI's data dumps from GTNH: `block.csv`
+  (4357 blocks with Java class), `itempanel.csv` (58484 stacks: name, ID, meta, display name) and
+  `itempanel_icons/` (40987 16x16 PNGs named by display name, with `_2`, `_3`... for repeats).
+- **Decision:** `img2schem palette import <dumps>` builds `palette.json` (in the cache, never committed):
+  - **variants:** each item-panel row of a block (no NBT, meta 0–15) is a placeable material variant;
+  - **colors:** icons are linked to rows by display name + repeat order, **only when a name has exactly as many
+    icons as rows** (82% of variants; ~95%+ for chisel, etfuturum, Ztones, BiblioWoods, Botania, vanilla).
+    Icon filenames map non-ASCII to `#Uxxxx` and `\/:*?"<>|` to `_` (checked on the dump);
+  - **shapes:** regex rules over the class simple name + registry path (not the mod id), plus a curated
+    full-cube class list and `palette/data/shape_overrides.yaml` for corrections;
+  - **orientation bits:** color lookup strips them per shape (stairs `meta & 8`, slab `meta & 7`, log `meta & 3`).
+- **Known limits:**
+  - icon colors are shaded 3D renders, ~70% of true texture brightness; consistent between blocks, so
+    Phase 1 matching must normalize brightness (clean mode, v1 R6.2);
+  - NEI renders some blocks near-black (e.g. Botania metamorphic stone). Icons with L* < 12 are flagged
+    `dark_icon` rather than dropped, since real black blocks look the same;
+  - 3441 blocks have shape `unknown` (machines, plants, decorative blocks with generic classes). NEI doesn't
+    record opacity, render type or tile entities; the SOW's helper mod (O2) would.

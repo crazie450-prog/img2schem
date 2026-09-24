@@ -31,6 +31,9 @@ img2schem = "img2schem.cli:app"
 include = ["img2schem*"]
 
 
+[tool.setuptools.package-data]
+"img2schem.palette" = ["data/*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

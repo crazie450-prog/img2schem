@@ -29,6 +29,7 @@ class ExportSettings(BaseModel):
 class Settings(BaseModel):
     instance: str | None = None
     world: str | None = None  # save folder name or path; its level.dat lists the valid block names
+    palette: str | None = None  # palette.json written by `palette import` (colors, shapes)
     schem_version: int = 2
     budgets: Budgets = Field(default_factory=Budgets)
     export: ExportSettings = Field(default_factory=ExportSettings)

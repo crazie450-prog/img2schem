@@ -32,7 +32,9 @@ img2schem instance list                  # instances from Prism, CurseForge, Mod
 img2schem instance use "<name>"          # or launcher:name, or a path to the instance folder
 img2schem world list                     # worlds of that instance
 img2schem world use img2schem-test       # its level.dat lists the valid block names
-img2schem doctor                         # WorldEdit, schematics folder, world
+img2schem palette import <.minecraft\dumps>  # colors + shapes from NEI data dumps (see below)
+img2schem palette search "stone brick" --shape stairs
+img2schem doctor                         # WorldEdit, schematics folder, world, palette
 
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
@@ -42,6 +44,9 @@ img2schem validate some.schematic [--strict]
 
 In game: `//schem load <name>`, stand where the build should go **facing south**, `//paste -a`.
 See [docs/TEST_BED.md](docs/TEST_BED.md).
+
+NEI dumps: in GTNH open the inventory, click NEI's wrench button, Tools → Data Dumps, and run the Block dump
+and the Item Panel dump as **CSV** and as **PNG**. They land in `.minecraft\dumps\`.
 
 Development: `pytest -q`, `ruff check .`, `mypy img2schem`.
 
