@@ -85,7 +85,8 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   `RemappingBlockIOFactory` serializer/deserializer against our writer/reader in both directions, with
   50–2000 distinct blocks and world IDs different from file IDs: every cell matched.
 - **Consequences:** files don't depend on a world's numeric IDs. At most 4095 distinct block names per file.
-  Offset/orientation still need the in-game check (TEST_BED.md).
+  **Verified in game 2026-09-23:** orientation, WEOffset placement and name remapping all correct; a
+  WorldEdit-saved file reads back with names resolved (TEST_BED.md Phase 0).
 
 ### D-011 Blocks are written `modid:name@meta`
 - **Decision:** a block is its Forge registry name plus metadata 0–15, written `name@meta` (`@0` omitted),
@@ -107,4 +108,6 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 ### D-014 1.7.10 orientation metadata in the test grids (verify)
 - **Decision:** stairs `0/1/2/3` ascend east/west/south/north, `+4` upside-down (from `BlockStairs` placement
   logic); `wooden_door` lower half `0–3` = east/south/west/north, upper half `8` (hinge left).
-- **Consequences:** the engine (Phase 1) will use the same tables; the in-game paste confirms them.
+- **Consequences:** the engine (Phase 1) will use the same tables. **Verified in game** for vanilla stairs and
+  doors. Modded stairs may use their own metadata scheme (Chisel packs texture variants into metadata), so
+  orientation metadata must be known per block, not assumed from vanilla (feeds SOW_GTNH Q1).

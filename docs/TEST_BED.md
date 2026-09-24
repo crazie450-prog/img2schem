@@ -38,11 +38,12 @@ should be resolved (not `id:<n>`) and the counts should match.
 
 | Check | Result / notes |
 |---|---|
-| Versions (GTNH / Forge / WorldEdit) | GTNH 2.9.0-beta-1 / 10.13.4.1614 / 6.3.0 |
-| `instance list` shows WorldEdit = yes | |
-| `world use` lists blocks per mod | |
-| `img2schem_cube` orientation + offset | |
-| `img2schem_house`: stairs, door, panes | |
-| `img2schem_modded` pastes cleanly | |
-| `inspect` on a WorldEdit-saved file | |
-| Previews match the paste | |
+| Versions (GTNH / Forge / WorldEdit) | GTNH 2.9.0-beta-1 / Forge 10.13.4.1614 / WorldEdit 6.3.0 (Prism, Java 25) |
+| `instance list` shows WorldEdit = yes | ✅ |
+| `world use` lists blocks per mod | ✅ 4357 blocks, 150 mods (`New World (1)`) |
+| `img2schem_cube` orientation + offset | ✅ white toward player, red on the right, gold top-left |
+| `img2schem_house`: stairs, door, panes | ✅ paste at (257,106,−125): front wall z=−123, x=247..266, door at (257,107,−123) meta 3; floor at the player's feet level |
+| `img2schem_modded` pastes cleanly | ⚠️ blocks correct; some Chisel stairs orientations unconfirmed (pending owner check / Chisel jar) |
+| No "Missing ID mapping" / errors in chat | ✅ |
+| `inspect` on a WorldEdit-saved file | ✅ `reread.schematic`: names resolved, WEOrigin (247,106,−123) = house min corner |
+| Previews match the paste | ✅ |
