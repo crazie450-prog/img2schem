@@ -37,14 +37,14 @@ Tasks
 4. Previews and structural validation. ✅
 5. Test grids with 1.7.10 names/metadata. ✅
 
-Definition of Done (owner)
-- [ ] `img2schem instance list` shows GTNH with WorldEdit = yes
-- [ ] `img2schem world use img2schem-test` lists the registered blocks per mod
-- [ ] `img2schem_cube`, `img2schem_house` and `img2schem_modded` paste with the right orientation and offset;
+Definition of Done (owner) — **all passed 2026-09-23; Phase 0 closed** (docs/TEST_BED.md)
+- [x] `img2schem instance list` shows GTNH with WorldEdit = yes
+- [x] `img2schem world use img2schem-test` lists the registered blocks per mod
+- [x] `img2schem_cube`, `img2schem_house` and `img2schem_modded` paste with the right orientation and offset;
       stairs, door and panes look right (D-014)
-- [ ] `img2schem inspect` reads a `.schematic` saved by WorldEdit in GTNH (`//copy`, `//schem save`) with
+- [x] `img2schem inspect` reads a `.schematic` saved by WorldEdit in GTNH (`//copy`, `//schem save`) with
       names resolved
-- [ ] Previews match the in-game paste orientation
+- [x] Previews match the in-game paste orientation
 
 ## Open questions
 

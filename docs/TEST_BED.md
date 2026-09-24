@@ -43,7 +43,7 @@ should be resolved (not `id:<n>`) and the counts should match.
 | `world use` lists blocks per mod | ✅ 4357 blocks, 150 mods (`New World (1)`) |
 | `img2schem_cube` orientation + offset | ✅ white toward player, red on the right, gold top-left |
 | `img2schem_house`: stairs, door, panes | ✅ paste at (257,106,−125): front wall z=−123, x=247..266, door at (257,107,−123) meta 3; floor at the player's feet level |
-| `img2schem_modded` pastes cleanly | ⚠️ blocks correct; some Chisel stairs orientations unconfirmed (pending owner check / Chisel jar) |
+| `img2schem_modded` pastes cleanly | ✅ `chisel:aluminum_stairs.1` + `chisel:woolen_clay`: both stair rings rise toward the center; only the north aluminum row upside-down, as designed |
 | No "Missing ID mapping" / errors in chat | ✅ |
 | `inspect` on a WorldEdit-saved file | ✅ `reread.schematic`: names resolved, WEOrigin (247,106,−123) = house min corner |
 | Previews match the paste | ✅ |

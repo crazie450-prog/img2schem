@@ -111,3 +111,4 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Consequences:** the engine (Phase 1) will use the same tables. **Verified in game** for vanilla stairs and
   doors. Modded stairs may use their own metadata scheme (Chisel packs texture variants into metadata), so
   orientation metadata must be known per block, not assumed from vanilla (feeds SOW_GTNH Q1).
+  Chisel stairs (`chisel:aluminum_stairs.1`, meta 0–7) were verified in game to follow the vanilla table.
