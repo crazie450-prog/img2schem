@@ -73,8 +73,8 @@ def test_spec_edits_change_the_build_without_api():
 
 def test_window_clamping_and_missing_door():
     s = spec(elements=[{"kind": "window", "bbox": [0.1, 0.0, 0.2, 0.05]},  # at the eaves
-                       {"kind": "window", "bbox": [0.5, 0.97, 0.6, 1.0]},  # at the ground
-                       {"kind": "garage", "bbox": [0.7, 0.6, 0.9, 1.0]}])  # fmt: skip
+                       {"kind": "window", "bbox": [0.75, 0.97, 0.85, 1.0]},  # at the ground
+                       {"kind": "garage", "bbox": [0.2, 0.6, 0.3, 1.0]}])  # fmt: skip
     doc, warnings = plan_template(s)
     w = [o for o in doc.ops if o.op == "window"]
     assert (w[0].y0, w[0].y1) == (7, 8) and (w[1].y0, w[1].y1) == (2, 3)
@@ -92,3 +92,16 @@ def test_required_materials_and_roof_fallback(tmp_path):
     )
     doc, warnings = plan_template(s, index)
     assert doc.style["roof"] == "minecraft:stonebrick" and any("RT.3" in w for w in warnings)
+
+
+def test_doors_win_over_windows_on_short_buildings():
+    """Owner bug: at 1 storey a measured upper window landed on the door's top half, which pops the door."""
+    doc, warnings = plan_template(spec(facade__storeys=1))
+    c = compile_ops(doc)
+    ox, oy, oz = c.origin
+    for x in (5, 6):
+        lower = c.grid.palette[c.grid.idx[x + ox, 1 + oy, oz]]
+        upper = c.grid.palette[c.grid.idx[x + ox, 2 + oy, oz]]
+        assert lower.startswith("minecraft:wooden_door") and upper.startswith("minecraft:wooden_door@")
+        assert int(upper.split("@")[1]) >= 8  # a real upper half
+    assert any("overlap a door" in w for w in warnings)

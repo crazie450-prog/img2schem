@@ -221,3 +221,9 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Overwriting in the WorldEdit folder (R8.10 changed):** a same-name file is replaced when img2schem wrote it
   (its NBT has the `img2schem` compound), so a rebuild keeps its `//schem load` name. Files from anywhere else
   are still never overwritten (the copy gets `_2`, `_3`, …).
+
+### D-023 Doors win over windows in the template
+- **Context (owner bug):** at 1 storey the measured upper-floor window boxes compress onto the lower rows; one
+  landed on the double door's top halves, and a 1.7.10 door without its upper half pops off.
+- **Decision:** the template places door ops after windows and leaves out any window that would cover a door
+  cell, with a warning. (The validator's door-pair rule, R10.5, will also catch this class of error.)

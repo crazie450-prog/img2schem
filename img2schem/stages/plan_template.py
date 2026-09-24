@@ -111,20 +111,29 @@ def plan_template(spec: BuildSpec, index: PaletteIndex | None = None) -> tuple[O
         ops.append({"op": "trim_band", "id": "eaves-band", "label": "Trim band under the eaves", "footprint": fp,
                     "y": wall_h, "mat": "$trim"})  # fmt: skip
 
-    # Front openings from the measured elements (RT.2).
+    # Front openings from the measured elements (RT.2). Doors are placed last and win: a window that would
+    # cover any door cell is dropped, since a door without its upper half pops off in game.
     front = [e for e in spec.elements if e.face == "front"]
-    doors = 0
+    door_ops: list[dict[str, Any]] = []
     for i, e in enumerate(front):
-        if e.kind == "window":
-            ops.append(_window_op(e, i, width, wall_h, fp, storey_h))
-        elif e.kind == "door":
-            ops += _door_ops(e, i, width)
-            doors += 1
-        else:
+        if e.kind == "door":
+            door_ops += _door_ops(e, i, width)
+        elif e.kind != "window":
             warnings.append(f"elements[{i}] kind {e.kind!r} is not built by the template (a designer can add it)")
-    if doors == 0:
+    if not door_ops:
         warnings.append("no door among the front elements; added one at the center (R10.3b)")
-        ops += _door_ops(Element(kind="door", bbox=(0.45, 0.6, 0.55, 1.0)), len(front), width)
+        door_ops = _door_ops(Element(kind="door", bbox=(0.45, 0.6, 0.55, 1.0)), len(front), width)
+    door_cells = {(o["pos"][0], o["pos"][1] + dy) for o in door_ops if o["op"] == "door" for dy in (0, 1)}
+    for i, e in enumerate(front):
+        if e.kind != "window":
+            continue
+        w = _window_op(e, i, width, wall_h, fp, storey_h)
+        cells = {(u, y) for u in range(w["u0"], w["u1"] + 1) for y in range(w["y0"], w["y1"] + 1)}
+        if cells & door_cells:
+            warnings.append(f"elements[{i}] (window) would overlap a door at this size; left out")
+            continue
+        ops.append(w)
+    ops += door_ops
     for e in spec.elements:
         if e.face != "front":
             warnings.append(f"a {e.face} element is ignored: multiview facades arrive in Phase 4")
