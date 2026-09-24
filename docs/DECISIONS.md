@@ -165,3 +165,17 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Icon names fix:** NEI keeps non-ASCII characters in icon file names (`Iszm ①.png`). The earlier `#Uxxxx`
   mapping came from how the dump zip was extracted for development, not from NEI, and cost the owner's Windows
   run all Ztones colors (−546 variants). Only `\/:*?"<>|` are replaced by `_`.
+
+### D-019 Block families, metadata that can't be material, Chisel top slabs, spaces in names
+- **Families** (`palette/query.py`, `img2schem palette family BLOCK`): a usable full block's stairs, slab,
+  wall, fence and gate are the usable variants with the same display-name stem (drop stairs/slab/wall/fence/
+  block/planks/wood/(fireproof), bricks→brick, tiles→tile), nearest color first, at most ΔE 20. On the owner's
+  dump: 3808 usable full blocks, 674 with stairs, 745 with a slab, 644 with both (roof-capable).
+- **`nbt_variant` flag:** stairs can only carry material in meta 0/8, slabs 0–7, logs 0–3 (the rest is
+  orientation). Item variants outside those (Forestry 68, ExtraTrees 34, Railcraft 22) keep their type in
+  tile-entity NBT and would paste as the default type, so they're flagged and not used.
+- **Chisel slabs** register a separate `<name>_top` block for the top half and use all 16 metas as materials;
+  `PaletteBlock.top_block` records the pairing and color lookup uses the full meta for them.
+- **Registry names may contain inner spaces** (`Natura:Rare Tree`, 15 blocks); `parse_block` allows them.
+- **Known limit:** a display name shared by more rows than icons (e.g. "Marble": 18 rows, 17 icons) gets no
+  colors at all, since the missing icon can't be identified. `chisel:marble` is affected.

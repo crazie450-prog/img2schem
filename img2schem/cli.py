@@ -234,6 +234,26 @@ def palette_search(
     console.print(t if hits else "no matches")
 
 
+@palette_app.command("family")
+def palette_family(block: str = typer.Argument(..., help="A usable full block, e.g. minecraft:stonebrick.")) -> None:
+    """The stairs, slab, wall, fence and gate that match a full block."""
+    from img2schem.palette.query import PaletteIndex
+
+    pal = _load_palette(required=True)
+    assert pal is not None
+    idx = PaletteIndex(pal)
+    try:
+        hit = idx.usable(block)
+    except ValueError as e:
+        raise _fail(str(e)) from None
+    if hit is None:
+        raise _fail(f"{block} is not a usable block (see `img2schem palette search`)")
+    console.print(f"{hit[1].block}  {hit[1].display}  ({hit[0].shape}, {hit[1].hex})")
+    for shape, member in idx.family(block).items():
+        m = idx.usable(member) if member else None
+        console.print(f"  {shape:10} {member or '-'}" + (f"  {m[1].display}  {m[1].hex}" if m else ""))
+
+
 # ---------------------------------------------------------------- files
 
 

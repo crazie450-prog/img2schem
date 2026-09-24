@@ -30,7 +30,7 @@ from img2schem.models import Palette, PaletteBlock, PaletteVariant, Shape
 from img2schem.util.block import format_block
 from img2schem.util.color import hex_color, icon_color, srgb_to_lab
 
-IMPORTER_VERSION = "3"
+IMPORTER_VERSION = "5"
 # Icons darker than this (CIELAB L*) are flagged: NEI renders some mods' blocks (e.g. Botania metamorphic
 # stone) nearly black, but real black blocks (obsidian, black wool) look the same, so they are only flagged.
 DARK_ICON_L = 12.0
@@ -61,6 +61,7 @@ _CUBE_OUTLINE = np.array(
         "...##########...", ".....######.....", ".......##.......",
     )]
 )  # fmt: skip
+MATERIAL_METAS: dict[str, set[int]] = {"stairs": {0, 8}, "slab": set(range(8)), "log": set(range(4))}
 CUBE_IOU = 0.95  # stairs icons score ~0.92, slabs ~0.64 (measured on the owner's dump)
 
 
@@ -166,6 +167,16 @@ def import_nei(dumps: Path) -> Palette:
             v.flags.append("excluded")
         if all(existing.meta != meta for existing in blk.variants):
             blk.variants.append(v)
+
+    # Shapes whose metadata also stores orientation can only carry material in these values. Other item
+    # variants (e.g. Forestry's wood stairs, typed through tile-entity NBT) cannot be placed by metadata.
+    for blk in pal.blocks.values():
+        if blk.shape == "slab" and f"{blk.name}_top" in pal.blocks:
+            blk.top_block = f"{blk.name}_top"
+        allowed = None if blk.top_block else MATERIAL_METAS.get(blk.shape)
+        for v in blk.variants:
+            if allowed is not None and v.meta not in allowed:
+                v.flags.append("nbt_variant")
 
     # Infested variants look like their normal counterparts; flag them when that counterpart exists.
     plain = {v.display.lower() for b in pal.blocks.values() for v in b.variants}

@@ -157,7 +157,8 @@ class PaletteVariant(BaseModel):
     alpha: float | None = None  # transparent fraction of the icon
     icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
     # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml;
-    # "infested": an infested block whose normal counterpart exists
+    # "infested": an infested block whose normal counterpart exists; "nbt_variant": the variant's meta can't be
+    # material for its shape (stairs 0/8, slab 0-7, log 0-3), so it is stored in tile-entity NBT
     flags: list[str] = Field(default_factory=list)
 
 
@@ -170,6 +171,8 @@ class PaletteBlock(BaseModel):
     block_class: str
     display: str | None = None
     shape: Shape = "unknown"
+    # Slabs only: a separate block for the top half (Chisel's "<name>_top"); then all 16 metas are materials.
+    top_block: str | None = None
     variants: list[PaletteVariant] = Field(default_factory=list)
 
     def usable(self) -> list[PaletteVariant]:
@@ -179,7 +182,10 @@ class PaletteBlock(BaseModel):
 
     def variant_for(self, meta: int) -> PaletteVariant | None:
         """The material variant of a placed metadata value (orientation bits stripped per shape)."""
-        material = {"stairs": meta & 8, "slab": meta & 7, "log": meta & 3}.get(self.shape, meta)
+        if self.shape == "slab" and self.top_block:
+            material = meta
+        else:
+            material = {"stairs": meta & 8, "slab": meta & 7, "log": meta & 3}.get(self.shape, meta)
         by_meta = {v.meta: v for v in self.variants}
         return by_meta.get(material) or by_meta.get(meta) or by_meta.get(0)
 

@@ -1,14 +1,14 @@
 """Minecraft 1.7.10 blocks: a registry name plus a 0-15 metadata value, written ``name@meta``.
 
-Registry names come from Forge's block registry and may contain upper case and dots
-(``IC2:blockMachine``, ``gregtech:gt.blockcasings``). ``@0`` may be omitted.
+Registry names come from Forge's block registry and may contain upper case, dots and inner spaces
+(``IC2:blockMachine``, ``gregtech:gt.blockcasings``, ``Natura:Rare Tree``). ``@0`` may be omitted.
 """
 
 from __future__ import annotations
 
 import re
 
-_BLOCK_RE = re.compile(r"^(?P<name>[^:@\s]+:[^@\s]+?)(?:@(?P<meta>\d+))?$")
+_BLOCK_RE = re.compile(r"^(?P<name>[^:@\s]+:[^@\s](?:[^@]*[^@\s])??)(?:@(?P<meta>\d+))?$")
 
 
 def parse_block(block: str) -> tuple[str, int]:

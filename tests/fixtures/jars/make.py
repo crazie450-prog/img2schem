@@ -113,7 +113,11 @@ def nei_dumps(root: Path) -> Path:
         "Railcraft:machine.alpha,3005,true,Railcraft,x.BlockMachine,World Anchor\n"
         "minecraft:stonebrick,98,true,minecraft,net.minecraft.block.BlockStoneBrick,Stone Bricks\n"
         "minecraft:monster_egg,97,true,minecraft,net.minecraft.block.BlockSilverfish,Stone Monster Egg\n"
-        "Ztones:tile.iszm,3006,true,Ztones,x.BlockIszm,Iszm\n",
+        "Ztones:tile.iszm,3006,true,Ztones,x.BlockIszm,Iszm\n"
+        "minecraft:stone_brick_stairs,109,true,minecraft,net.minecraft.block.BlockStairs,Stone Brick Stairs\n"
+        "chisel:marble_slab,2180,true,chisel,team.chisel.block.BlockCarvableSlab,Marble Slab\n"
+        "chisel:marble_slab_top,2181,true,chisel,team.chisel.block.BlockCarvableSlab,Marble Slab\n"
+        "Forestry:stairs,3007,true,Forestry,forestry.arboriculture.gadgets.BlockArbStairs,Larch Stairs\n",
         encoding="utf-8",
     )
     (root / "itempanel.csv").write_text(
@@ -135,7 +139,13 @@ def nei_dumps(root: Path) -> Path:
         "minecraft:stonebrick,98,0,false,Stone Bricks\n"
         "minecraft:monster_egg,97,2,false,Infested Stone Bricks\n"
         "minecraft:monster_egg,97,5,false,Infested Chiseled Quartz\n"
-        "Ztones:tile.iszm,3006,8,false,Iszm \u2467\n",
+        "Ztones:tile.iszm,3006,8,false,Iszm \u2467\n"
+        "minecraft:stone_brick_stairs,109,0,false,Stone Brick Stairs\n"
+        "minecraft:stone_slab,44,5,false,Stone Bricks Slab\n"
+        "chisel:marble_slab,2180,0,false,Marble Slab\n"
+        "chisel:marble_slab,2180,9,false,Marble Slab\n"
+        "Forestry:stairs,3007,0,false,Larch Stairs\n"
+        "Forestry:stairs,3007,3,false,Lime Stairs\n",
         encoding="utf-8",
     )
     icons = root / "itempanel_icons"
@@ -151,6 +161,12 @@ def nei_dumps(root: Path) -> Path:
         "Aluminum Stairs_3.png": (110, 110, 110),
         "Crystalline Brain_ Air.png": (5, 5, 5),
         "Machine.png": (1, 2, 3),  # 2 rows but 1 icon: ambiguous -> no color
+        "Stone Brick Stairs.png": (91, 91, 91),
+        "Stone Bricks Slab.png": (96, 96, 96),
+        "Marble Slab.png": (200, 200, 200),
+        "Marble Slab_2.png": (180, 180, 185),
+        "Larch Stairs.png": (140, 100, 90),
+        "Lime Stairs.png": (133, 104, 71),
     }
     for name, rgb in colors.items():
         Image.new("RGBA", (16, 16), (*rgb, 255)).save(icons / name)

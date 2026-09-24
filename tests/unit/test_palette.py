@@ -115,3 +115,28 @@ def test_cube_outline_and_exclusions(pal, tmp_path):
 )
 def test_exclude_patterns(text, excluded):
     assert bool(exclude_patterns().search(text)) is excluded
+
+
+def test_metadata_that_cannot_be_material_is_nbt_variant(pal):
+    larch, lime = pal.blocks["Forestry:stairs"].variants
+    assert larch.flags == [] and lime.flags == ["nbt_variant"]  # stairs carry material only in 0/8
+
+
+def test_chisel_slabs_with_a_top_block_use_all_16_metas(pal):
+    slab = pal.blocks["chisel:marble_slab"]
+    assert slab.top_block == "chisel:marble_slab_top"
+    assert [v.meta for v in slab.usable()] == [0, 9]
+    assert pal.color("chisel:marble_slab@9") == (180, 180, 185)  # meta 9 is a material, not "top of 1"
+    assert pal.color("minecraft:stone_slab@13") == pal.color("minecraft:stone_slab@5")  # vanilla: 8 = top
+
+
+def test_families(pal):
+    from img2schem.palette.query import PaletteIndex, stem
+
+    assert stem("Stone Bricks") == stem("Stone Brick Stairs") == stem("Stone Bricks Slab") == "stone brick"
+    assert stem("Larch Wood Planks (Fireproof)") == stem("Larch Stairs") == "larch"
+    assert stem("Block of Quartz") == stem("Quartz Slab") == "quartz"
+    fam = PaletteIndex(pal).family("minecraft:stonebrick")
+    assert fam["stairs"] == "minecraft:stone_brick_stairs" and fam["slab"] == "minecraft:stone_slab@5"
+    assert fam["wall"] is None
+    assert PaletteIndex(pal).family("minecraft:monster_egg@2") == dict.fromkeys(fam)  # infested: not usable
