@@ -6,7 +6,8 @@ sits at its bottom (y = 0, g, g + s, ...); the roof starts one block above the w
 
 Front openings come from the spec's measured element boxes (normalized over the wall, eaves = 0, ground = 1),
 rasterized with v1 R6.5: windows at least 1 wide and 2 tall (1 on storeys under 4 blocks), never touching
-the ground row or the eaves row; doors 2 tall at ground level, two doors side by side when 2+ blocks wide.
+the ground row or the eaves row, glass flush in the 1-block wall; doors 2 tall at ground level, two doors side by
+side when 2+ blocks wide.
 Sides and back get v1 R4a.4 "sparse" windows: one per storey per 6 blocks of wall.
 """
 
@@ -160,7 +161,7 @@ def _window_op(e: Element, i: int, width: int, wall_h: int, fp: dict[str, int], 
         else:
             hi += 1
     return {"op": "window", "id": f"window-{i}", "label": f"Front window {i} (measured)", "footprint": fp,
-            "face": "front", "u0": us[0], "u1": us[-1], "y0": lo, "y1": hi, "recess": 1}  # fmt: skip
+            "face": "front", "u0": us[0], "u1": us[-1], "y0": lo, "y1": hi, "recess": 0}  # fmt: skip
 
 
 def _door_ops(e: Element, i: int, width: int) -> list[dict[str, Any]]:

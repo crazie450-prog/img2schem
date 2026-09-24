@@ -264,6 +264,30 @@ def _load(path: Path) -> tuple[BlockGrid, SchemInfo]:
         raise _fail(f"cannot read {path}: {e}", EXIT_VALIDATION) from None
 
 
+def _plan_file(spec_file: Path, pal: Palette | None, out: Path | None = None) -> Path:
+    """Template-plan a spec.json into an ops.json (default: next to the spec); returns the ops path."""
+    from pydantic import ValidationError
+
+    from img2schem.models import BuildSpec
+    from img2schem.palette.query import PaletteIndex
+    from img2schem.stages.plan_template import PlanError, plan_template
+
+    try:
+        spec = BuildSpec.model_validate_json(spec_file.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as e:
+        raise _fail(f"cannot read {spec_file}: {e}") from None
+    try:
+        doc, warnings = plan_template(spec, PaletteIndex(pal) if pal else None)
+    except PlanError as e:
+        raise _fail(str(e)) from None
+    out = out or spec_file.with_name(spec_file.name.replace(".spec.json", "").removesuffix(".json") + ".ops.json")
+    out.write_text(doc.model_dump_json(indent=1, by_alias=True), encoding="utf-8")
+    for w in warnings:
+        console.print(f"[yellow]warning:[/yellow] {w}")
+    console.print(f"planned {spec_file} -> {out}  ({len(doc.ops)} ops)")
+    return out
+
+
 @app.command()
 def plan(
     spec_file: Path = typer.Argument(..., metavar="SPEC.json"),
@@ -271,41 +295,24 @@ def plan(
     out: Path | None = typer.Option(None, "--out", help="Output ops.json (default: next to the spec)."),
 ) -> None:
     """S3: spec.json -> ops.json (the build program), deterministic with --designer template."""
-    from pydantic import ValidationError
-
-    from img2schem.models import BuildSpec
-    from img2schem.palette.query import PaletteIndex
-    from img2schem.stages.plan_template import PlanError, plan_template
 
     if designer != "template":
         raise _fail(f"--designer {designer} is not available yet (Phase 2); use --designer template")
-    try:
-        spec = BuildSpec.model_validate_json(spec_file.read_text(encoding="utf-8"))
-    except (OSError, ValidationError) as e:
-        raise _fail(f"cannot read {spec_file}: {e}") from None
-    pal = _load_palette()
-    try:
-        doc, warnings = plan_template(spec, PaletteIndex(pal) if pal else None)
-    except PlanError as e:
-        raise _fail(str(e)) from None
-    out = out or spec_file.with_name(spec_file.name.replace(".spec.json", "").removesuffix(".json") + ".ops.json")
-    out.write_text(doc.model_dump_json(indent=1, by_alias=True, exclude_defaults=False), encoding="utf-8")
-    for w in warnings:
-        console.print(f"[yellow]warning:[/yellow] {w}")
-    console.print(f"{out}  ({len(doc.ops)} ops)  next: img2schem compile {out}")
+    out = _plan_file(spec_file, _load_palette(), out)
+    console.print(f"next: img2schem compile {out}")
 
 
 @app.command("compile")
 def compile_cmd(
-    ops_file: Path = typer.Argument(..., metavar="OPS.json"),
+    ops_file: Path = typer.Argument(..., metavar="OPS.json|SPEC.json"),
     out: Path | None = typer.Option(None, "--out", help="Output directory (default: out/<name>_<timestamp>)."),
     name: str | None = typer.Option(None, "--name", help="Schematic name (default: the file's stem)."),
     copy: bool = typer.Option(True, "--copy/--no-copy", help="Also copy into the instance's WorldEdit folder."),
 ) -> None:
-    """Compile ops.json (S4) -> validate (S5) -> .schematic, previews, report.json (S7). No API calls."""
-    import time
+    """Compile ops.json (S4) -> validate (S5) -> .schematic, previews, report.json (S7). No API calls.
 
-    from pydantic import ValidationError
+    Given a spec.json, plans it first (like `img2schem plan`) and compiles the resulting ops.json."""
+    import time
 
     from img2schem.engine.compiler import CompileError, compile_ops, paste_offset
     from img2schem.engine.ops import OpsDoc
@@ -316,11 +323,15 @@ def compile_cmd(
 
     s = load_settings()
     t0 = time.perf_counter()
-    try:
-        doc = OpsDoc.model_validate_json(ops_file.read_text(encoding="utf-8"))
-    except (OSError, ValidationError) as e:
-        raise _fail(f"cannot read {ops_file}: {e}") from None
     pal = _load_palette()
+    try:
+        raw = json.loads(ops_file.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and "facade" in raw:  # a spec.json: plan it first (template designer)
+            ops_file = _plan_file(ops_file, pal)
+            raw = json.loads(ops_file.read_text(encoding="utf-8"))
+        doc = OpsDoc.model_validate(raw)
+    except (OSError, ValueError) as e:
+        raise _fail(f"cannot read {ops_file}: {e}") from None
     try:
         compiled = compile_ops(doc, PaletteIndex(pal) if pal else None, s.budgets.hard_max_total)
     except CompileError as e:

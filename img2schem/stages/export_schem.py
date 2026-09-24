@@ -208,12 +208,20 @@ def read_schematic(path: Path) -> tuple[BlockGrid, SchemInfo]:
     return grid, info
 
 
+def written_by_img2schem(path: Path) -> bool:
+    try:
+        return "img2schem" in nbtlib.load(str(path))
+    except (OSError, ValueError, KeyError, TypeError, EOFError):
+        return False
+
+
 def copy_to_schematics_dir(schem: Path, schematics_dir: Path) -> Path:
-    """R8.10: copy into WorldEdit's folder, never overwriting (append _2, _3, ...)."""
+    """R8.10: copy into WorldEdit's folder. An existing file of the same name is replaced only if img2schem wrote
+    it (so a rebuild keeps its //schem load name, D-022); any other file is kept and the copy gets _2, _3, ..."""
     schematics_dir.mkdir(parents=True, exist_ok=True)
     target = schematics_dir / schem.name
     n = 2
-    while target.exists():
+    while target.exists() and not written_by_img2schem(target):
         target = schematics_dir / f"{schem.stem}_{n}{schem.suffix}"
         n += 1
     shutil.copy2(schem, target)

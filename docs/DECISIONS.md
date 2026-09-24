@@ -211,3 +211,13 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Role defaults** for glass/door/floor live in `palette/data/role_defaults.yaml` (vanilla, always present).
 - **Golden test:** `tests/golden/house_spec.npz` is the compiled `examples/brick_house.spec.json`; regenerate with
   `UPDATE_GOLDEN=1 pytest tests/unit/test_plan_template.py` after an intentional change.
+
+### D-022 Rebuild workflow fixes (owner feedback)
+- **Windows flush:** with 1-block walls, a recessed window leaves a hole in the wall and a pane floating inside
+  the room (seen in game). The template now places glass in the wall plane (`recess: 0`); `recess: 1` stays
+  available for thicker walls. Supersedes the "recessed by default" part of D-021.
+- **`compile` accepts a spec.json** (detected by its `facade` key): it plans with the template designer, writes
+  the ops.json next to it, then compiles, so editing a spec and compiling can't silently rebuild stale ops.
+- **Overwriting in the WorldEdit folder (R8.10 changed):** a same-name file is replaced when img2schem wrote it
+  (its NBT has the `img2schem` compound), so a rebuild keeps its `//schem load` name. Files from anywhere else
+  are still never overwritten (the copy gets `_2`, `_3`, …).

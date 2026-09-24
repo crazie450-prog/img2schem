@@ -103,3 +103,22 @@ def test_plan_then_compile(tmp_path, monkeypatch):
     r = runner.invoke(app, ["compile", "brick_house.ops.json", "--out", "out"])
     assert r.exit_code == 0, r.output
     assert runner.invoke(app, ["plan", "brick_house.spec.json", "--designer", "claude"]).exit_code == 4
+
+
+def test_compile_accepts_a_spec_and_picks_up_edits(tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    from img2schem.stages.export_schem import read_schematic
+
+    _env(tmp_path, monkeypatch)
+    shutil.copy(Path(__file__).parents[2] / "examples" / "brick_house.spec.json", tmp_path / "my.spec.json")
+    r = runner.invoke(app, ["compile", "my.spec.json", "--out", "a"])
+    assert r.exit_code == 0, r.output
+    h2 = read_schematic(tmp_path / "a" / "my.schematic")[0].shape[1]
+    spec = json.loads((tmp_path / "my.spec.json").read_text())
+    spec["facade"]["storeys"] = 3
+    (tmp_path / "my.spec.json").write_text(json.dumps(spec))
+    r = runner.invoke(app, ["compile", "my.spec.json", "--out", "b"])
+    assert r.exit_code == 0, r.output
+    assert read_schematic(tmp_path / "b" / "my.schematic")[0].shape[1] == h2 + 5

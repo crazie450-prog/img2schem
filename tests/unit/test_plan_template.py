@@ -40,7 +40,7 @@ def test_example_layout():
     assert ops["floors"].ys == [0, 5] and ops["roof"].y0 == 10 and ops["roof"].type == "gable"
     assert doc.style["glass"] == "minecraft:glass_pane"  # role default
     windows = [o for o in doc.ops if o.op == "window"]
-    assert len(windows) == 5 and all(o.recess == 1 for o in windows)
+    assert len(windows) == 5 and all(o.recess == 0 for o in windows)  # flush in 1-block walls
     for w in windows:  # never on the ground row or the eaves row, at least 2 tall
         assert w.y0 >= 2 and w.y1 <= 8 and w.y1 - w.y0 + 1 >= 2
     doors = [o for o in doc.ops if o.op == "door"]

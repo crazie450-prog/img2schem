@@ -153,9 +153,15 @@ def test_byte_identical_output(tmp_path):
     assert a == b
 
 
-def test_copy_never_overwrites(tmp_path):
-    src = tmp_path / "house.schematic"
-    src.write_bytes(b"x")
+def test_copy_replaces_only_our_own_files(tmp_path):
+    grid = BlockGrid.empty(1, 1, 1)
+    grid.set(0, 0, 0, "minecraft:stone")
+    ours = write_schematic(tmp_path / "house.schematic", grid)
     dest = tmp_path / "we"
-    assert copy_to_schematics_dir(src, dest).name == "house.schematic"
-    assert copy_to_schematics_dir(src, dest).name == "house_2.schematic"
+    assert copy_to_schematics_dir(ours, dest).name == "house.schematic"
+    assert copy_to_schematics_dir(ours, dest).name == "house.schematic"  # rebuild keeps its load name
+    (dest / "keep.schematic").write_bytes(b"someone else's file")
+    theirs = tmp_path / "keep.schematic"
+    write_schematic(theirs, grid)
+    assert copy_to_schematics_dir(theirs, dest).name == "keep_2.schematic"
+    assert (dest / "keep.schematic").read_bytes() == b"someone else's file"
