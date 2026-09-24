@@ -66,7 +66,19 @@ def test_classify(cls, name, shape):
 
 def test_icon_filename_base():
     assert icon_filename_base("Crystalline Brain: Air") == "Crystalline Brain_ Air"
-    assert icon_filename_base("α Centauri Bb Stone Dust") == "#U03b1 Centauri Bb Stone Dust"
+    assert icon_filename_base("α Centauri Bb Stone Dust") == "α Centauri Bb Stone Dust"  # non-ASCII kept
+
+
+def test_non_ascii_icon_names(pal):
+    (iszm,) = pal.blocks["Ztones:tile.iszm"].variants
+    assert iszm.rgb == (40, 120, 200) and iszm.flags == []
+
+
+def test_infested_only_when_a_normal_counterpart_exists(pal):
+    eggs = {v.meta: v for v in pal.blocks["minecraft:monster_egg"].variants}
+    assert eggs[2].flags == ["infested"]  # "Stone Bricks" exists
+    assert eggs[5].flags == []  # no plain "Chiseled Quartz" in this palette: stays usable
+    assert [v.meta for v in pal.blocks["minecraft:monster_egg"].usable()] == [5]
 
 
 def test_lab_reference_values():

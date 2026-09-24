@@ -156,7 +156,8 @@ class PaletteVariant(BaseModel):
     lab: tuple[float, float, float] | None = None
     alpha: float | None = None  # transparent fraction of the icon
     icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
-    # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml
+    # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml;
+    # "infested": an infested block whose normal counterpart exists
     flags: list[str] = Field(default_factory=list)
 
 

@@ -157,3 +157,11 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Consequences:** heuristic; some machine-like cubes may slip through and some fine blocks may be excluded.
   The owner corrects them by editing `exclude.yaml` / `shape_overrides.yaml` and re-running `palette import`.
   Role tiers (wall/roof/trim/…) are derived from this set by rules in Phase 1 instead of a curated list.
+
+### D-018 Infested blocks and icon file names
+- **Infested (owner rule):** never use an infested block when a non-infested variant exists. A variant whose
+  display name is "Infested X" is flagged `infested` when any variant is named "X" (case-insensitive);
+  otherwise it stays usable (e.g. Twilight Forest "Infested Towerwood", which has no plain counterpart).
+- **Icon names fix:** NEI keeps non-ASCII characters in icon file names (`Iszm ①.png`). The earlier `#Uxxxx`
+  mapping came from how the dump zip was extracted for development, not from NEI, and cost the owner's Windows
+  run all Ztones colors (−546 variants). Only `\/:*?"<>|` are replaced by `_`.

@@ -110,7 +110,10 @@ def nei_dumps(root: Path) -> Path:
         "Automagy:crystalBrain,3002,true,Automagy,x.BlockCrystalBrain,Crystalline Brain\n"
         "gregtech:gt.blockmachines,3003,true,gregtech,gregtech.api.BaseMetaTileEntityBlock,Machine\n"
         "ExtraUtilities:colorStoneBrick,3004,true,ExtraUtilities,x.BlockColor,Colored Stone Bricks\n"
-        "Railcraft:machine.alpha,3005,true,Railcraft,x.BlockMachine,World Anchor\n",
+        "Railcraft:machine.alpha,3005,true,Railcraft,x.BlockMachine,World Anchor\n"
+        "minecraft:stonebrick,98,true,minecraft,net.minecraft.block.BlockStoneBrick,Stone Bricks\n"
+        "minecraft:monster_egg,97,true,minecraft,net.minecraft.block.BlockSilverfish,Stone Monster Egg\n"
+        "Ztones:tile.iszm,3006,true,Ztones,x.BlockIszm,Iszm\n",
         encoding="utf-8",
     )
     (root / "itempanel.csv").write_text(
@@ -128,7 +131,11 @@ def nei_dumps(root: Path) -> Path:
         "gregtech:gt.blockmachines,3003,1086,false,Big Meta\n"
         "minecraft:wool,35,5,true,White Wool\n"
         "ExtraUtilities:colorStoneBrick,3004,0,false,Colored Stone Bricks (White)\n"
-        "Railcraft:machine.alpha,3005,0,false,World Anchor\n",
+        "Railcraft:machine.alpha,3005,0,false,World Anchor\n"
+        "minecraft:stonebrick,98,0,false,Stone Bricks\n"
+        "minecraft:monster_egg,97,2,false,Infested Stone Bricks\n"
+        "minecraft:monster_egg,97,5,false,Infested Chiseled Quartz\n"
+        "Ztones:tile.iszm,3006,8,false,Iszm \u2467\n",
         encoding="utf-8",
     )
     icons = root / "itempanel_icons"
@@ -147,7 +154,15 @@ def nei_dumps(root: Path) -> Path:
     }
     for name, rgb in colors.items():
         Image.new("RGBA", (16, 16), (*rgb, 255)).save(icons / name)
-    for name, rgb in {"Colored Stone Bricks (White).png": (200, 200, 200), "World Anchor.png": (90, 90, 90)}.items():
+    cubes = {
+        "Colored Stone Bricks (White).png": (200, 200, 200),
+        "World Anchor.png": (90, 90, 90),
+        "Stone Bricks.png": (88, 88, 88),
+        "Infested Stone Bricks.png": (88, 88, 88),
+        "Infested Chiseled Quartz.png": (220, 220, 215),
+        "Iszm \u2467.png": (40, 120, 200),  # non-ASCII characters are kept in icon file names
+    }
+    for name, rgb in cubes.items():
         cube_icon(rgb).save(icons / name)
     return root
 

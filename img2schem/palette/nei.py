@@ -4,12 +4,13 @@ Inputs, from NEI's Tools -> Data Dumps in the owner's GTNH instance (``.minecraf
 - ``block.csv``: ``Name,ID,Has Item,Mod,Class,Display Name`` for every registered block;
 - ``itempanel.csv``: ``Item Name,Item ID,Item meta,Has NBT,Display Name`` for every item-panel stack; for a
   block's item, ``Item meta`` is the block metadata of that variant;
-- ``itempanel_icons/``: one 16x16 PNG per stack, named by display name (non-ASCII -> ``#Uxxxx``,
-  ``\\/:*?"<>|`` -> ``_``) with ``_2``, ``_3``... for repeats in item-panel order.
+- ``itempanel_icons/``: one 16x16 PNG per stack, named by display name (``\\/:*?"<>|`` -> ``_``; other
+  characters, including non-ASCII, kept) with ``_2``, ``_3``... for repeats in item-panel order.
 
 An icon is linked to a row only when its display name has exactly as many icons as rows (then the Nth row
 gets the Nth icon); otherwise the variant has no color. Shapes come from the block's Java class and name, then
-from the icon outline (plain cubes). Variants matching palette/data/exclude.yaml are flagged "excluded".
+from the icon outline (plain cubes). Variants matching palette/data/exclude.yaml are flagged "excluded"; infested
+variants are flagged "infested" when the same name without "Infested" exists (owner rule, D-018).
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from img2schem.models import Palette, PaletteBlock, PaletteVariant, Shape
 from img2schem.util.block import format_block
 from img2schem.util.color import hex_color, icon_color, srgb_to_lab
 
-IMPORTER_VERSION = "2"
+IMPORTER_VERSION = "3"
 # Icons darker than this (CIELAB L*) are flagged: NEI renders some mods' blocks (e.g. Botania metamorphic
 # stone) nearly black, but real black blocks (obsidian, black wool) look the same, so they are only flagged.
 DARK_ICON_L = 12.0
@@ -93,8 +94,7 @@ def classify(block_class: str, name: str) -> Shape:
 
 
 def icon_filename_base(display: str) -> str:
-    s = "".join(c if ord(c) < 128 else f"#U{ord(c):04x}" for c in display)
-    return re.sub(r'[\\/:*?"<>|]', "_", s)
+    return re.sub(r'[\\/:*?"<>|]', "_", display)
 
 
 def dumps_key(dumps: Path) -> str:
@@ -166,6 +166,14 @@ def import_nei(dumps: Path) -> Palette:
             v.flags.append("excluded")
         if all(existing.meta != meta for existing in blk.variants):
             blk.variants.append(v)
+
+    # Infested variants look like their normal counterparts; flag them when that counterpart exists.
+    plain = {v.display.lower() for b in pal.blocks.values() for v in b.variants}
+    for blk in pal.blocks.values():
+        for v in blk.variants:
+            m = re.match(r"infested\s+(.+)", v.display, re.IGNORECASE)
+            if m and m.group(1).lower() in plain:
+                v.flags.append("infested")
 
     # Blocks without a known shape whose every icon has the plain-cube outline are full cubes.
     for blk in pal.blocks.values():
