@@ -70,11 +70,13 @@ def render_top(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> 
     return _to_image(cells.T, _palette_rgb(grid, palette), SHADE["top"], px)
 
 
-def render_iso(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
+def render_iso(
+    grid: BlockGrid, px: int = 8, palette: Palette | None = None, colors: np.ndarray | None = None
+) -> Image.Image:
     """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower)."""
     idx = grid.idx
     xs, ys, zs = idx.shape
-    rgb = _palette_rgb(grid, palette)
+    rgb = _palette_rgb(grid, palette) if colors is None else colors
     s = px
     pad = np.pad(idx != 0, 1)
     solid = pad[1:-1, 1:-1, 1:-1]
@@ -121,3 +123,22 @@ def write_previews(grid: BlockGrid, out_dir: Path, px: int = 8, palette: Palette
         fn(grid, px, palette).save(p)
         paths.append(p)
     return paths
+
+
+def render_debug_ops(grid: BlockGrid, op_index: np.ndarray, op_names: list[str], px: int = 8) -> Image.Image:
+    """R9.4: iso view with every op's cells in its own color, plus a legend (for review and critique)."""
+    ops_grid = BlockGrid(np.where(grid.idx != 0, op_index + 1, 0), ["minecraft:air", *op_names])
+    colors = np.array([BG] + [block_color(f"op:{n}") for n in op_names], dtype=np.float32)
+    iso = render_iso(ops_grid, px, colors=colors)
+    used = [i for i in range(len(op_names)) if (ops_grid.idx == i + 1).any()]
+    line = 14
+    legend_w = 12 + max((len(op_names[i]) for i in used), default=0) * 7
+    img = Image.new("RGB", (iso.width + legend_w, max(iso.height, 8 + line * len(used))), BG)
+    img.paste(iso, (0, 0))
+    draw = ImageDraw.Draw(img)
+    for row, i in enumerate(used):
+        y = 4 + row * line
+        c = tuple(int(v) for v in colors[i + 1])
+        draw.rectangle([iso.width, y, iso.width + 9, y + 9], fill=c, outline=(80, 80, 80))
+        draw.text((iso.width + 13, y - 1), op_names[i], fill=(40, 40, 40))
+    return img

@@ -80,14 +80,14 @@ def roof_cells(op: Roof, res: Resolver) -> list[Cell]:
     else:
         along_x = op.rise in ("north", "south")  # a shed rising south has its courses running along x
     if along_x:  # u = z
-        u0, u1, v0, v1, wall_u0, wall_u1, wall_v = fz0, fz1, fx0, fx1, fp.z0, fp.z1, (fp.x0, fp.x1)
+        u0, u1, v0, v1, wall_u0, wall_u1 = fz0, fz1, fx0, fx1, fp.z0, fp.z1
         up_from_low: Direction = "south"
 
         def put(u: int, v: int, dy: int, block: str, label: int) -> None:
             cells.append((v, op.y0 + dy, u, block, label))
 
     else:  # u = x
-        u0, u1, v0, v1, wall_u0, wall_u1, wall_v = fx0, fx1, fz0, fz1, fp.x0, fp.x1, (fp.z0, fp.z1)
+        u0, u1, v0, v1, wall_u0, wall_u1 = fx0, fx1, fz0, fz1, fp.x0, fp.x1
         up_from_low = "east"
 
         def put(u: int, v: int, dy: int, block: str, label: int) -> None:
@@ -119,18 +119,20 @@ def roof_cells(op: Roof, res: Resolver) -> list[Cell]:
         for v in range(v0, v1 + 1):
             for dy, block in placements:
                 put(u, v, dy, block, ROOF)
-        if wall_u0 <= u <= wall_u1:  # gable ends: fill under the roof in the two end-wall planes
-            for v in wall_v:
-                for dy in range(0, min(dy for dy, _ in placements)):  # up to just below the roof
-                    put(u, v, dy, b.fill, WALL)
-    if op.type == "shed":  # the tall wall under the high edge
-        hi_u = wall_u1 if rising_to_high_u else wall_u0
-        k, ascend = step_at(hi_u)
-        top = min(dy for dy, _ in (_course(op, b, k, ascend) if ascend else _cap(op, b, k)))
-        for v in range(wall_v[0], wall_v[1] + 1):
-            for dy in range(0, top):
-                put(hi_u, v, dy, b.fill, WALL)
-    return cells
+    return _seal(op, b, cells)
+
+
+def _seal(op: Roof, b: _Blocks, cells: list[Cell]) -> list[Cell]:
+    """Close the roof onto the walls: every column on the footprint's wall line is filled with ``gable_fill``
+    from ``y0`` up to just below its lowest roof block. This makes the gable triangles and a shed's tall wall,
+    and with an overhang it closes the slot between the wall top and the first course over the wall."""
+    fp = op.footprint
+    lowest: dict[tuple[int, int], int] = {}
+    for x, y, z, _, _ in cells:
+        if (x in (fp.x0, fp.x1) and fp.z0 <= z <= fp.z1) or (z in (fp.z0, fp.z1) and fp.x0 <= x <= fp.x1):
+            lowest[(x, z)] = min(y, lowest.get((x, z), y))
+    fill = [(x, y, z, b.fill, WALL) for (x, z), top in sorted(lowest.items()) for y in range(op.y0, top)]
+    return cells + fill
 
 
 def _hip(op: Roof, b: _Blocks, x0: int, x1: int, z0: int, z1: int) -> list[Cell]:
@@ -149,4 +151,4 @@ def _hip(op: Roof, b: _Blocks, x0: int, x1: int, z0: int, z1: int) -> list[Cell]
                 ascend: Direction = "south" if z == z0 else "north" if z == z1 else "east" if x == x0 else "west"
                 cells += [(x, op.y0 + dy, z, block, ROOF) for dy, block in _course(op, b, k, ascend)]
         x0, x1, z0, z1, k = x0 + 1, x1 - 1, z0 + 1, z1 - 1, k + 1
-    return cells
+    return _seal(op, b, cells)

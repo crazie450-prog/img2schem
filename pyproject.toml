@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 license = { text = "Proprietary; personal use" }
 dependencies = [
     "numpy>=1.26",
+    "scipy>=1.11",
     "Pillow>=10",
     "pydantic>=2.5",
     "pyyaml>=6",

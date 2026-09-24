@@ -62,14 +62,14 @@ class Resolver:
         except ValueError as e:
             raise MaterialError(str(e)) from None
         if self.index is None:
-            return Material(name, meta, _guess_shape(name))
+            return Material(name, meta, guess_shape(name))
         blk = self.index.palette.blocks.get(name)
         if blk is None:
             raise MaterialError(f"{block}: not in the palette")
         return Material(name, meta, blk.shape, blk.top_block)
 
 
-def _guess_shape(name: str) -> str:
+def guess_shape(name: str) -> str:
     """Without a palette (tests, hand-written builds), infer the shape from vanilla-style names."""
     n = name.split(":", 1)[-1].lower()
     for shape, key in (("stairs", "stairs"), ("slab", "slab"), ("door", "door"), ("log", "log")):

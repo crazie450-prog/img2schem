@@ -227,3 +227,20 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   landed on the double door's top halves, and a 1.7.10 door without its upper half pops off.
 - **Decision:** the template places door ops after windows and leaves out any window that would cover a door
   cell, with a warning. (The validator's door-pair rule, R10.5, will also catch this class of error.)
+
+### D-024 Validator rules, roof sealing, debug_ops.png
+- **Rules** (`stages/validate.py`): R10.3 floating fragments, R10.3b door at ground / window under the roof,
+  R10.5 door pairs, R10.6 doors supported, R10.8 single-block roof holes, R10.9 trim/wall contrast (ΔE < 8),
+  R10.10 mods required. **Auto-fixes** (applied by `compile` before validating, each reported): add a missing
+  upper door half when there is room, otherwise remove the orphan half; remove unsupported doors; remove floating
+  fragments under 4 blocks. Not done: R10.7 (gravity blocks are excluded from the palette anyway) and R10.11
+  (door reachability, info only).
+- **R10.8 is a warning without auto-fix** (deviation): a hole can be an intentional `carve` (skylight), which the
+  compiled grid can't tell apart.
+- **Connectivity is 18-neighborhood** (faces + edges): stair and slab roofs step diagonally, so consecutive
+  courses share only an edge yet form one surface in game; face-only connectivity flagged every hip roof.
+- **Roof sealing (bug found by R10.3 on the cottage):** with an overhang, the course above the wall line sat one
+  block above the wall top, leaving a slot. The roof op now fills every wall-line column from `y0` up to just
+  below its lowest roof block with `gable_fill`; this one rule also produces the gable triangles and a shed's
+  tall wall (replacing the separate code). Guarded by a test over every roof type × pitch × overhang 0–2.
+- **`debug_ops.png`** (R9.4): iso view with each op's cells in its own color and a legend, written by `compile`.

@@ -318,8 +318,8 @@ def compile_cmd(
     from img2schem.engine.ops import OpsDoc
     from img2schem.palette.query import PaletteIndex
     from img2schem.stages.export_schem import SchemMeta, copy_to_schematics_dir, write_schematic
-    from img2schem.stages.preview import write_previews
-    from img2schem.stages.validate import failed, validate_grid, write_issues
+    from img2schem.stages.preview import render_debug_ops, write_previews
+    from img2schem.stages.validate import autofix, contrast_issues, failed, shape_lookup, validate_grid, write_issues
 
     s = load_settings()
     t0 = time.perf_counter()
@@ -342,10 +342,22 @@ def compile_cmd(
     out = out or Path("out") / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
     out.mkdir(parents=True, exist_ok=True)
     grid = compiled.grid.compact()
-    issues = validate_grid(grid, s.budgets, _active_palette())
+    idx = PaletteIndex(pal) if pal else None
+    shape_of = shape_lookup(pal)
+    issues = autofix(grid, shape_of)
+    issues += validate_grid(grid, s.budgets, _active_palette(), shape_of=shape_of, labels=compiled.labels)
+    if idx is not None:
+        styled = {k: v for k, v in doc.style.items() if not v.startswith("$")}
+
+        def lab_of(block: str) -> tuple[float, float, float] | None:
+            hit = idx.usable(block)
+            return hit[1].lab if hit else None
+
+        issues += contrast_issues(styled, lab_of)
     write_issues(issues, out / "issues.json")
     for i in issues:
-        console.print(f"{i.severity} {i.rule}: {i.message}")
+        fix = " (fixed)" if i.autofix_applied else ""
+        console.print(f"{i.severity} {i.rule}{fix}: {i.message}")
     if failed(issues):
         raise _fail("validation failed; see issues.json", EXIT_VALIDATION)
 
@@ -356,6 +368,7 @@ def compile_cmd(
     )
     schem = write_schematic(out / f"{name}.schematic", grid, offset=paste_offset(compiled), meta=meta)
     write_previews(grid, out, palette=pal)
+    render_debug_ops(grid, compiled.op_index, [o.id for o in doc.ops]).save(out / "debug_ops.png")
     report = {
         "name": name,
         "ops_file": str(ops_file),
@@ -366,7 +379,11 @@ def compile_cmd(
         "ops_count": len(doc.ops),
         "set_cells_used": sum(len(o.cells) for o in doc.ops if o.op == "set"),
         "time_compile_s": round(t_compile, 3),
-        "validation": {"ok": True, "issues": [i.model_dump() for i in issues]},
+        "validation": {
+            "ok": True,
+            "autofixes": sum(i.autofix_applied for i in issues),
+            "issues": [i.model_dump() for i in issues],
+        },
         "ops": [vars(sm) for sm in compiled.summaries],
         "counts": dict(sorted(grid.counts().items(), key=lambda kv: -kv[1])),
     }

@@ -112,9 +112,39 @@ def test_gable_1_1_rows_ridge_and_gable_fill():
         assert at(c, x, 6, 0) == "minecraft:spruce_stairs@2"
         assert at(c, x, 5, 5) == "minecraft:spruce_stairs@3"  # south slope ascends north
         assert at(c, x, 7, 2) == "minecraft:planks@1"  # ridge cap, flush with the top stairs
-    fill = {p for p, b in blocks(c).items() if b == "minecraft:brick_block"}
-    assert {p[0] for p in fill} == {0, 6}  # only the two gable-end walls
-    assert max(p[1] for p in fill) == 6 and (0, 7, 2) not in fill  # never above the roof
+    cells = blocks(c)
+    fill = {p for p, b in cells.items() if b == "minecraft:brick_block"}
+    on_wall_line = {(x, z) for x in range(7) for z in range(5) if x in (0, 6) or z in (0, 4)}
+    assert {(p[0], p[2]) for p in fill} == on_wall_line  # only on the footprint's wall line
+    for x, z in on_wall_line:  # each column filled from y0 up to just below its lowest roof block
+        roof_y = min(p[1] for p, b in cells.items() if (p[0], p[2]) == (x, z) and b != "minecraft:brick_block")
+        assert {p[1] for p in fill if (p[0], p[2]) == (x, z)} == set(range(5, roof_y))
+    assert (0, 7, 2) not in fill  # never above the roof
+
+
+@pytest.mark.parametrize("rtype", ["gable", "hip", "shed", "flat"])
+@pytest.mark.parametrize("pitch", ["1:1", "1:2", "2:1"])
+@pytest.mark.parametrize("overhang", [0, 1, 2])
+def test_roofs_seal_onto_the_walls(rtype, pitch, overhang):
+    """Found by the validator on the cottage: with an overhang the course over the wall sat a block above the wall
+    top, leaving a slot. Walls + roof must be one piece (face/edge-connected, like the R10.3 check)."""
+    from scipy import ndimage
+
+    fp = {"x0": 0, "z0": 0, "x1": 8, "z1": 6}
+    c = build(
+        {"op": "walls", "id": "w", "footprint": fp, "y0": 0, "height": 4},
+        {"op": "roof", "id": "r", "footprint": fp, "y0": 4, "type": rtype, "pitch": pitch, "overhang": overhang},
+    )
+    from img2schem.stages.validate import CONNECTIVITY
+
+    _, n = ndimage.label(c.grid.idx != 0, structure=CONNECTIVITY)
+    assert n == 1
+    cells = blocks(c)
+    for x in range(9):  # no slot: every wall-line column is solid from the wall top up to its roof block
+        for z in range(7):
+            if x in (0, 8) or z in (0, 6):
+                roof_y = min(p[1] for p in cells if (p[0], p[2]) == (x, z) and p[1] >= 4)
+                assert all((x, y, z) in cells for y in range(3, roof_y)), (x, z)
 
 
 def test_gable_along_z_hip_shed_flat():
