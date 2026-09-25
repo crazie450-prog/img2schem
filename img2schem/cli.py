@@ -267,6 +267,7 @@ def palette_family(block: str = typer.Argument(..., help="A usable full block, e
 def palette_review(
     blocks: list[str] = typer.Argument(..., help="Full blocks to check, e.g. chisel:marble minecraft:stonebrick."),
     out: Path = typer.Option(Path("out/palette_review.png"), help="Where to write the sheet."),
+    scale: int = typer.Option(2, min=1, max=6, help="Size of the sheet (2 = 380 px per block)."),
 ) -> None:
     """A PNG sheet per block: its icon, measured color and family (stairs, slab, wall, fence, gate)."""
     from img2schem.palette.query import PaletteIndex
@@ -282,7 +283,7 @@ def palette_review(
         except ValueError as e:
             raise _fail(str(e)) from None
     out.parent.mkdir(parents=True, exist_ok=True)
-    review_sheet(idx, blocks).save(out)
+    review_sheet(idx, blocks, scale).save(out)
     console.print(f"wrote {out}")
 
 

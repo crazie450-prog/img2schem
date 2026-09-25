@@ -51,6 +51,7 @@ def test_review_sheet(tmp_path):
     from img2schem.palette.review import review_sheet
 
     idx = PaletteIndex(import_nei(nei_dumps(tmp_path / "dumps")))
-    img = review_sheet(idx, ["minecraft:stonebrick", "minecraft:quartz_block"])
-    assert img.size == (6 * 150, 2 * 150)
-    assert img.getpixel((6 + 64 + 10, 40)) != (246, 246, 244)  # the color swatch of the first block
+    img = review_sheet(idx, ["minecraft:stonebrick", "minecraft:quartz_block"], scale=1)
+    assert img.size == (6 * 190, 2 * 150)
+    assert img.getpixel((6 + 64 + 6 + 30, 50)) != (246, 246, 244)  # the color swatch of the first block
+    assert review_sheet(idx, ["minecraft:stonebrick"]).size == (6 * 380, 300)  # default scale 2
