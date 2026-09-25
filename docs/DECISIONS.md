@@ -447,3 +447,27 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   sitting on the hip roof's lower course: nothing to see through.
 - **Decision:** R10.8 flags an air cell between roof blocks only when the cell below it is empty too. A false
   warning costs more than noise here: it goes into every tool result and the designer spends turns on it.
+
+### D-037 Phase 2 closed (owner)
+- The owner accepted Phase 2 on the live results (TEST_BED): text and photo designs, critique, edits with
+  history, budgets, three real sessions as replay tests. **Deferred to Phase 4** (not blocking the UI): the S2
+  analysis stage (measured spec.json from rectified photos), the design result cache (RD.6: identical inputs
+  cost nothing), and the 20-instruction edit script (A-D).
+
+### D-038 Web UI, first slice
+- **Server** (`img2schem/server/`): FastAPI on 127.0.0.1 only (RU.10). REST for builds, the viewer grid, the ops
+  editor's save (a valid, compiling ops.json becomes a version, kind "manual"), undo/redo and export; a
+  WebSocket runs a design or edit in a worker thread and streams events (Claude's notes, each tool call, the
+  updated build at most every 250 ms, done, export). It drives the same stages as the CLI:
+  `stages/build.py` and `designer/runner.py` were split out of the CLI for this.
+- **Projects are the builds folder** (`builds/<name>.ops.json` + history, D-033) instead of the SOW's
+  `project.img2schem.json`; every UI action is already an artifact on disk.
+- **Viewer:** the server sends only blocks that can be seen (a block buried by opaque full blocks on all six
+  sides is left out) with each block's color and shape boxes; the page draws one instanced mesh per block
+  (stairs and slabs as their boxes, glass translucent), with orbit controls, a layer slider (RU.5) and an FPS
+  overlay (Shift+P). Flat colors for now; the texture atlas (RU.1) comes later.
+- **Stack** per D14: React + Vite + TypeScript, three.js via react-three-fiber, CodeMirror for ops.json. The
+  built bundle (`img2schem/server/static`, ~460 kB gzipped) is committed so the owner runs the UI with Python
+  only; `web/` holds the source.
+- **Not yet** (next slices): streaming block animation (RU.3), op history tree and op highlighting, material
+  slots and palette browser, a stop button, the reference photo overlay, themes, the Playwright smoke test.

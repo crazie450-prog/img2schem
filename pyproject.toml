@@ -23,8 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 vlm = ["anthropic>=1.8"]
-server = ["fastapi", "uvicorn"]
-dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
+server = ["fastapi>=0.115", "uvicorn>=0.30"]
+dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "httpx"]
 
 [project.scripts]
 img2schem = "img2schem.cli:app"
@@ -36,6 +36,7 @@ include = ["img2schem*"]
 [tool.setuptools.package-data]
 "img2schem.palette" = ["data/*.yaml"]
 "img2schem.designer" = ["data/*.yaml", "prompts/*.md"]
+"img2schem.server" = ["static/*", "static/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

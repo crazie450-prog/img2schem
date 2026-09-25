@@ -5,8 +5,8 @@ Photo (or text description) of a building → a designed Minecraft build → a W
 including mods.
 
 The spec is [docs/SOW.md](docs/SOW.md), re-scoped for GTNH by [docs/SOW_GTNH.md](docs/SOW_GTNH.md).
-**Status: Phase 2 in progress**: the engine, template, validator and photo stages (Phase 1) work; the
-Claude designer builds from a text description. Photo analysis by Claude, critique and edits come next.
+**Status: Phase 3 in progress** (the local web UI). Phase 2 is done: Claude designs builds from a description
+or photos, with critique passes, and edits them with a version history (undo/redo).
 
 ## Quick start
 
@@ -15,14 +15,14 @@ Windows PowerShell (5.1 has no `&&`, so one command per line):
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1      # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-pip install -e ".[dev,vlm]"   # vlm = the Anthropic SDK for the Claude designer
+pip install -e ".[dev,vlm,server]"   # vlm: the Anthropic SDK (designer); server: the web UI
 ```
 
 Linux/macOS:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev,vlm]"
+pip install -e ".[dev,vlm,server]"
 ```
 
 Then:
@@ -50,6 +50,7 @@ img2schem edit watchtower "make the roof steeper"        # Claude changes builds
 img2schem history watchtower                             # versions, instructions, cost
 img2schem undo watchtower                                # back one version (redo: forward), recompiled
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
+img2schem serve --open                   # the web UI (local): design, revise, preview in 3D, edit ops.json
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
 img2schem preview  some.schematic --out out/prev
 img2schem validate some.schematic [--strict]
@@ -66,7 +67,9 @@ value) and the per-build budgets: a warning at US$1 and a hard stop at US$5, or 
 NEI dumps: in GTNH open the inventory, click NEI's wrench button, Tools → Data Dumps, and run the Block dump
 and the Item Panel dump as **CSV** and as **PNG**. They land in `.minecraft\dumps\`.
 
-Development: `pytest -q`, `ruff check .`, `mypy img2schem`.
+Development: `pytest -q`, `ruff check .`, `mypy img2schem`. Web UI source: `web/` (`npm install`, `npm run dev`
+with `img2schem serve` running; `npm run build` updates the bundle in `img2schem/server/static`, which is
+committed so running the UI needs no Node).
 
 ## Legal notice
 

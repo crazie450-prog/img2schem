@@ -31,6 +31,10 @@ class Callbacks:
     warning: Callable[[str], None] | None = None
     tool: Callable[[str, Any, ToolResult], None] | None = None
     critique: Callable[[int], None] | None = None  # a critique pass starts
+    changed: Callable[[DesignState], None] | None = None  # the build changed (after a successful edit tool)
+
+
+MUTATING = ("replace_op", "delete_op", "set_style")
 
 
 @dataclass
@@ -60,10 +64,17 @@ def _run(state: DesignState, brief: str | list[dict[str, Any]], *, settings: Set
     out.mkdir(parents=True, exist_ok=True)
     transport = make_transport(settings, out, replay)
     ops_path = out / f"{record['name']}.ops.json"
+
+    def on_tool(name: str, args: Any, r: ToolResult) -> None:
+        if cb.tool:
+            cb.tool(name, args, r)
+        if cb.changed and not r.is_error and (name.startswith("add_") or name in MUTATING):
+            cb.changed(state)
+
     try:
         result = run_design(state, brief, system_prompt(state.palette), tool_specs(render=render), settings.claude,
                             limit, transport, budget, cb.progress, cb.warning, critique, critique_passes,
-                            cb.tool)  # fmt: skip
+                            on_tool)  # fmt: skip
     except Exception as e:  # keep what was built before an API or network failure
         ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
         hint = ("\nhint: set ANTHROPIC_WORKSPACE_ID in .env (see .env.example), or use a key made inside a "

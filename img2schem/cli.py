@@ -614,6 +614,28 @@ def history(build: str = typer.Argument(..., help="Build name or ops.json path."
 
 
 @app.command()
+def serve(
+    port: int = typer.Option(8765, "--port"),
+    open_browser: bool = typer.Option(False, "--open", help="Open the UI in your browser."),
+) -> None:
+    """The local web UI (Phase 3): design, edit and preview builds in the browser. Local only."""
+    try:
+        import uvicorn
+
+        from img2schem.server.app import create_app
+    except ImportError:
+        raise _fail('the web UI needs its server packages: pip install -e ".[vlm,server]"') from None
+    url = f"http://127.0.0.1:{port}"
+    console.print(f"img2schem UI: {url}   (Ctrl+C stops it)")
+    if open_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    uvicorn.run(create_app(), host="127.0.0.1", port=port, log_level="warning")  # RU.10: never 0.0.0.0
+
+
+@app.command()
 def inspect(file: Path, as_json: bool = JsonOpt) -> None:
     """Dims, blocks, counts and mods required of a .schematic."""
     grid, info = _load(file)

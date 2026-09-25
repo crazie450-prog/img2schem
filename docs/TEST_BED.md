@@ -64,3 +64,18 @@ should be resolved (not `id:<n>`) and the counts should match.
 | First live `img2schem design` run (D-031, D-032) | ✅ ran: watchtower, 5 turns, $0.33 on Opus 5.5 (in-game check pending); it found the roof's sealing ring on an open lookout -> `seal: false` |
 | First live `img2schem edit` + `undo` (D-033) | ✅ edit ran: "remove the ring of stone bricks at the eaves" -> Claude set the roof's `seal: false`, 2 turns, $0.18, 776 -> 744 blocks (exactly the 32-block ring); undo and in-game check pending |
 | First photo design with critique (D-034): the owner's three modern houses | house 2 ✅ (prompt v1) 15 turns, $0.84 with 2 critique passes; massing, garage wing, dark tower element match; mirrored at first, critique pass 1 fixed it with 30 replace_ops (-> D-035); house 3 ✅ (prompt v2) right way round from the start, 21 turns, $0.77: 3-car garage with stone piers, roof deck with glass railing, white main block under a deep hip eave, stone west wing; its 4 "roof holes" were a validator false positive (-> D-036); house 1 ⏳ |
+
+### Phase 2 — Claude designer (closed by the owner 2026-09-25, D-037)
+
+| Check | Result / notes |
+|---|---|
+| Text -> build, photo -> build with critique, edits with undo | ✅ watchtower $0.33, edit $0.18, house 2 $0.84, house 3 $0.77 (Opus 5.5) |
+| Real sessions as replay tests | ✅ watchtower, house 2 (critique fixed a mirror), house 3 (prompt v2) |
+| Deferred to Phase 4 | S2 measured spec from rectified photos, design result cache (RD.6), 20-instruction edit script |
+
+### Phase 3 — Web UI (in progress)
+
+| Check | Result / notes |
+|---|---|
+| `img2schem serve --open`: builds list, 3D view, ops editor, design/revise with live progress, undo/redo, export (D-038) | ⏳ owner: first run on the owner's machine |
+
