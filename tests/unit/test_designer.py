@@ -277,3 +277,25 @@ def test_photo_brief_and_critique_sheet(tmp_path):
     assert msg[0]["type"] == "image" and "pass 1 of 2" in msg[1]["text"]
     sheet = Image.open(tmp_path / "c.png")
     assert sheet.height == 520 + 28 and sheet.width > 1000  # photo, iso and front side by side
+
+
+HOUSE2 = Path(__file__).parents[1] / "fixtures" / "designer" / "house2_photo_live.session.jsonl"
+
+
+@pytest.mark.replay
+def test_replay_of_the_owners_photo_session_with_critique():
+    """A real Opus 5.5 photo design (the owner's house 2, prompt v1): critique pass 1 found the plan mirrored and
+    rebuilt it with 30 replace_op calls; pass 2 found only cosmetic differences."""
+    critiques = []
+
+    def critique(n):
+        critiques.append(n)
+        return [{"type": "text", "text": f"critique {n}"}]
+
+    state = DesignState(OpsDoc(), None, Budgets())
+    r = run_design(state, "photo", "S", tool_specs(), SETTINGS, BUDGET, ReplayTransport(HOUSE2),
+                   critique=critique, critique_passes=2)  # fmt: skip
+    assert (r.stopped, r.turns, r.critique_passes, critiques) == ("finished", 15, 2, [1, 2])
+    assert r.cost_usd == pytest.approx(0.8352, abs=1e-4) and r.cost_usd < BUDGET.warn
+    assert any("mirrored" in t for t in r.text)
+    assert state.doc.ops  # without the owner's palette some ops are rejected, but the build stands
