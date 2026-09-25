@@ -384,3 +384,18 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Recording and replay:** live runs write `session.jsonl` into the run folder; `--replay` re-runs one with
   no API calls. CI replays a synthetic session (tests/fixtures/designer), and the live SDK path is tested
   against a mock HTTP server; real recordings from the owner's runs can be added as fixtures.
+
+### D-032 Designer on Claude Opus 5.5 (owner)
+- **Decision (owner):** the designer runs on `claude-opus-5-5` instead of `claude-opus-5` (D-031): 20 % cheaper per
+  token ($4 / $20, cache reads $0.20 per million) and, at `medium` effort, at least as good as Opus 5 at `high`
+  with fewer tokens. Effort is set to `medium` explicitly (the API default).
+- **Its API changes, handled:** thinking is always on (adaptive); forced tool choice is not used; the loop passes
+  every returned block back unchanged and never edits earlier turns, so thinking blocks stay valid (a test checks
+  that each request's system, tools and history extend the previous one byte for byte). The request opts into
+  `prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): if a block ever failed
+  the check the API drops it (reported as a warning) instead of failing a paid build. Notes between tool calls
+  arrive as thinking text with `display: "updates"` (beta `thinking-display-updates-2026-08-18`) and are shown
+  as progress.
+- **Fallback:** `claude-opus-5` re-runs a declined turn (the documented targets are Opus 5 / 4.8). It is dearer
+  ($5 / $25), so the budget's worst case is priced at the dearer of the two models, and each turn is priced by
+  the model that served it.

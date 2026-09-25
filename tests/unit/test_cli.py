@@ -164,7 +164,7 @@ def test_design_replays_a_session_and_compiles(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     assert (out / "tower.schematic").is_file() and (out / "preview_iso.png").is_file()
     record = json.loads((out / "design.json").read_text())
-    assert record["stopped"] == "finished" and record["turns"] == 3 and record["model"] == "claude-opus-5"
+    assert record["stopped"] == "finished" and record["turns"] == 3 and record["model"] == "claude-opus-5-5"
     assert json.loads((out / "report.json").read_text())["usage"]["design"]["turns"] == 3
     assert len(json.loads((out / "tower.ops.json").read_text())["ops"]) == 6
 

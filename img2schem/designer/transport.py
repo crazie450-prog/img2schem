@@ -32,13 +32,14 @@ class LiveTransport:
         self.fallback_model = fallback_model
 
     def send(self, request: dict[str, Any], progress: Progress | None = None) -> dict[str, Any]:
-        extra: dict[str, Any] = {}
+        request = dict(request)
         if self.fallback_model:
-            extra = {"betas": [FALLBACK_BETA], "fallbacks": [{"model": self.fallback_model}]}
+            request["betas"] = [*request.get("betas", []), FALLBACK_BETA]
+            request["fallbacks"] = [{"model": self.fallback_model}]
         attempts = 0
         while True:
             try:
-                with self.client.beta.messages.stream(**request, **extra) as stream:
+                with self.client.beta.messages.stream(**request) as stream:
                     for event in cast(Any, stream):  # narrowed by event.type below
                         if progress is None:
                             continue
@@ -46,6 +47,8 @@ class LiveTransport:
                             progress("tool", event.content_block.name)
                         elif event.type == "content_block_start" and event.content_block.type == "thinking":
                             progress("thinking", "")
+                        elif event.type == "content_block_delta" and event.delta.type == "thinking_delta":
+                            progress("text", event.delta.thinking)  # progress notes (display: "updates")
                         elif event.type == "text":
                             progress("text", event.text)
                     return stream.get_final_message().to_dict()  # type: ignore[no-any-return]

@@ -29,7 +29,7 @@ def price(model: str) -> Price:
         raise ValueError(f"no price for model {model!r}; add it to designer/data/pricing.yaml")
     m = t["models"][model]
     return Price(m["input"], m["output"], m["input"] * t["cache_write_multiplier"],
-                 m["input"] * t["cache_read_multiplier"])  # fmt: skip
+                 m.get("cache_read", m["input"] * t["cache_read_multiplier"]))  # fmt: skip
 
 
 def usage_cost(model: str, usage: dict[str, Any]) -> float:
@@ -43,8 +43,8 @@ def usage_cost(model: str, usage: dict[str, Any]) -> float:
     ) / 1e6
 
 
-def worst_case(model: str, input_tokens: int, max_tokens: int) -> float:
-    """The most a call can cost: every input token written to the cache (the dearest input rate) plus
-    ``max_tokens`` of output."""
-    p = price(model)
-    return (input_tokens * max(p.input, p.cache_write) + max_tokens * p.output) / 1e6
+def worst_case(models: list[str], input_tokens: int, max_tokens: int) -> float:
+    """The most a call can cost on any of ``models`` (the designer and its fallback): every input token
+    written to the cache (the dearest input rate) plus ``max_tokens`` of output."""
+    return max((input_tokens * max(p.input, p.cache_write) + max_tokens * p.output) / 1e6
+               for p in map(price, models))  # fmt: skip

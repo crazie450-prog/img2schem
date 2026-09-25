@@ -17,6 +17,7 @@ from img2schem.designer.tools import DesignState
 from img2schem.designer.transport import Progress, Transport
 
 MAX_SAME_OP_ERRORS = 3  # RD.3
+BETAS = ("thinking-display-updates-2026-08-18", "thinking-binding-controls-2026-08-01")
 
 
 @dataclass
@@ -28,10 +29,6 @@ class DesignResult:
     usage: list[dict[str, Any]] = field(default_factory=list)  # per turn: model, tokens, cost
     warnings: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)  # Claude's prose between tool calls
-
-
-def _clean(block: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in block.items() if v is not None}
 
 
 def _tokens(obj: Any) -> int:
@@ -65,7 +62,8 @@ def run_design(
 
     for turn in range(settings.turn_cap):
         try:
-            guard.check(worst_case(settings.model, context, settings.max_tokens))
+            guard.check(worst_case([m for m in (settings.model, settings.fallback_model) if m], context,
+                                   settings.max_tokens))
         except BudgetExceeded as e:
             result.stopped = "budget"
             warn(str(e))
@@ -76,7 +74,12 @@ def run_design(
             "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             "tools": tools,
             "messages": messages,
-            "thinking": {"type": "adaptive"},
+            # Progress notes between tool calls come back as thinking text ("updates"); thinking blocks are
+            # passed back unchanged, and a block the API can't bind to this conversation is dropped rather
+            # than failing a paid build (preserved thinking, D-032).
+            "thinking": {"type": "adaptive", "display": "updates",
+                         "block_binding": {"prefix_mismatch_behavior": "drop_block"}},
+            "betas": list(BETAS),
             "output_config": {"effort": settings.effort},
             "cache_control": {"type": "ephemeral"},  # also cache the conversation so far
         }
@@ -91,9 +94,12 @@ def run_design(
                                                           "cache_read_input_tokens")}})  # fmt: skip
         if msg := guard.add(cost):
             warn(msg)
-        content = [_clean(b) for b in response.get("content", [])]
-        messages.append({"role": "assistant", "content": content})
-        result.text += [b["text"] for b in content if b.get("type") == "text" and b.get("text")]
+        content = response.get("content", [])
+        messages.append({"role": "assistant", "content": content})  # unchanged: thinking blocks stay valid
+        result.text += [b.get("text") or b.get("thinking") for b in content
+                        if b.get("type") in ("text", "thinking") and (b.get("text") or b.get("thinking"))]
+        if response.get("input_transformations"):
+            warn(f"the API dropped earlier thinking: {json.dumps(response['input_transformations'])[:300]}")
         context = sum(usage.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens",
                                                    "cache_read_input_tokens")) + (usage.get("output_tokens") or 0)
         stop = response.get("stop_reason")

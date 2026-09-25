@@ -1,8 +1,9 @@
-# US$ per million tokens, Anthropic first-party list prices (cached 2026-06). Verify at docs.claude.com.
-# Cache writes (5-minute TTL) cost 1.25 x input; cache reads 0.1 x input.
+# US$ per million tokens, Anthropic first-party list prices (cached 2026-09). Verify at docs.claude.com.
+# Cache writes (5-minute TTL) cost 1.25 x input; cache reads 0.1 x input unless a model sets cache_read.
 cache_write_multiplier: 1.25
 cache_read_multiplier: 0.10
 models:
+  claude-opus-5-5: {input: 4.00, output: 20.00, cache_read: 0.20}
   claude-opus-5:   {input: 5.00, output: 25.00}
   claude-opus-4-8: {input: 5.00, output: 25.00}
   claude-sonnet-5: {input: 2.00, output: 10.00}

@@ -16,7 +16,7 @@ def tool(i: int, name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def response(content: list[dict[str, Any]], stop: str = "tool_use", usage: dict[str, int] | None = None,
-             model: str = "claude-opus-5") -> dict[str, Any]:  # fmt: skip
+             model: str = "claude-opus-5-5") -> dict[str, Any]:  # fmt: skip
     return {"id": "msg_x", "type": "message", "role": "assistant", "model": model, "content": content,
             "stop_reason": stop, "usage": usage or USAGE}  # fmt: skip
 

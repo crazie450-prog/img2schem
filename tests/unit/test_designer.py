@@ -56,7 +56,7 @@ def test_replay_builds_the_recorded_design(tmp_path):
     assert [o.id for o in state.doc.ops] == ["floors", "walls", "door", "windows", "stair", "roof"]
     assert state.doc.style["roof.stairs"] == "minecraft:brick_stairs"
     assert not [i for i in state.issues if i.severity == "error"]
-    assert r.cost_usd == pytest.approx(3 * usage_cost("claude-opus-5", synthetic.USAGE))
+    assert r.cost_usd == pytest.approx(3 * usage_cost("claude-opus-5-5", synthetic.USAGE))
     assert r.text == ["A 7x7 stone watchtower, 3 storeys, with a spiral stair and a hip roof."]
     counts = state.compiled.grid.counts()
     assert counts["minecraft:wooden_door@3"] == 1 and any("oak_stairs" in b for b in counts)
@@ -79,7 +79,25 @@ def test_tool_results_go_back_with_errors_and_images():
     # the conversation is replayed to the API as sent: thinking blocks unchanged, tools and system cached
     assert t.requests[1]["messages"][1]["content"][0] == {"type": "thinking", "thinking": "", "signature": "sig"}
     assert t.requests[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert t.requests[0]["thinking"] == {"type": "adaptive"}
+    assert t.requests[0]["thinking"]["block_binding"] == {"prefix_mismatch_behavior": "drop_block"}
+    assert t.requests[0]["output_config"] == {"effort": "medium"} and t.requests[0]["model"] == "claude-opus-5-5"
+
+
+def test_history_is_append_only_and_blocks_come_back_unchanged():
+    """Preserved thinking: system, tools and every earlier message stay byte-identical across turns."""
+    odd = {"type": "text", "text": "note", "citations": None}  # even None fields are passed back as received
+    turns = [response([{"type": "thinking", "thinking": "updates", "signature": "s1"}, odd,
+                       tool(1, "get_state_summary", {})]),
+             response([tool(2, "render_views", {"views": ["iso"]})]),
+             response([tool(3, "finish", {"summary": "x"})])]  # fmt: skip
+    state = new_state()
+    state.execute("add_box", {"id": "b", "from": [0, 0, 0], "to": [1, 1, 1], "mat": "minecraft:stone"})
+    _, t, r = design(turns, state=state)
+    for a, b in zip(t.requests, t.requests[1:], strict=False):
+        assert json.dumps(b["messages"][: len(a["messages"])]) == json.dumps(a["messages"])
+        assert (a["system"], a["tools"], a["betas"]) == (b["system"], b["tools"], b["betas"])
+    assert t.requests[1]["messages"][1]["content"][1] == odd
+    assert r.text == ["updates", "note"]  # progress notes arrive as thinking text
 
 
 def test_same_op_failing_three_times_is_skipped():
@@ -92,13 +110,14 @@ def test_same_op_failing_three_times_is_skipped():
 
 
 def test_budget_warns_then_stops_before_passing_the_limit():
-    heavy = {"input_tokens": 100_000, "output_tokens": 20_000, "cache_creation_input_tokens": 0,
-             "cache_read_input_tokens": 0}  # $1.00 a turn at $5 / $25 per million
+    heavy = {"input_tokens": 100_000, "output_tokens": 30_000, "cache_creation_input_tokens": 0,
+             "cache_read_input_tokens": 0}  # $1.00 a turn at $4 / $20 per million
     turns = [response([tool(i, "get_state_summary", {})], usage=heavy) for i in range(10)]
     state, t, r = design(turns)
     assert r.stopped == "budget" and "--budget large" in r.warnings[-1]
     assert "past the default budget's $1.00 warning" in r.warnings[0]
-    assert r.cost_usd <= BUDGET.stop and r.cost_usd + worst_case("claude-opus-5", 120_000, 32000) > BUDGET.stop
+    worst = worst_case(["claude-opus-5-5", "claude-opus-5"], 120_000, 32000)
+    assert r.cost_usd <= BUDGET.stop and r.cost_usd + worst > BUDGET.stop
 
 
 def test_a_truncated_turn_runs_no_tools():
@@ -130,6 +149,15 @@ def test_state_editing_and_rollback():
     assert s.execute("nope", {}).is_error and s.execute("add_box", "not json").is_error
 
 
+def test_opus_5_5_prices():
+    from img2schem.designer.pricing import price
+
+    p = price("claude-opus-5-5")
+    assert (p.input, p.output, p.cache_write, p.cache_read) == (4.0, 20.0, 5.0, 0.20)
+    assert price("claude-opus-5").cache_read == pytest.approx(0.5)
+    assert worst_case(["claude-opus-5-5", "claude-opus-5"], 0, 10_000) == pytest.approx(0.25)  # the dearer one
+
+
 def test_request_digest_is_stable():
     assert request_digest({"b": 1, "a": [1, 2]}) == request_digest({"a": [1, 2], "b": 1})
 
@@ -142,7 +170,7 @@ def test_live_transport_request_and_stream_parsing():
 
     events = [
         {"type": "message_start", "message": {"id": "m", "type": "message", "role": "assistant",
-                                              "model": "claude-opus-5", "content": [], "stop_reason": None,
+                                              "model": "claude-opus-5-5", "content": [], "stop_reason": None,
                                               "usage": {"input_tokens": 10, "output_tokens": 1}}},
         {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1",
                                                                      "name": "add_box", "input": {}}},
@@ -162,10 +190,13 @@ def test_live_transport_request_and_stream_parsing():
     client = anthropic.Anthropic(api_key="test", http_client=anthropic.DefaultHttpxClient(
         transport=httpx2.MockTransport(handler)))  # fmt: skip
     seen = []
-    request = {"model": "claude-opus-5", "max_tokens": 1000, "messages": [{"role": "user", "content": "hi"}],
-               "tools": tool_specs()[:1], "thinking": {"type": "adaptive"}, "cache_control": {"type": "ephemeral"}}
-    msg = LiveTransport("claude-opus-4-8", client=client).send(request, lambda k, t: seen.append((k, t)))
+    request = {"model": "claude-opus-5-5", "max_tokens": 1000, "messages": [{"role": "user", "content": "hi"}],
+               "tools": tool_specs()[:1], "thinking": {"type": "adaptive", "display": "updates"},
+               "betas": ["thinking-display-updates-2026-08-18"], "cache_control": {"type": "ephemeral"}}
+    msg = LiveTransport("claude-opus-5", client=client).send(request, lambda k, t: seen.append((k, t)))
     assert msg["content"][0]["input"] == {"id": "b", "to": [2, 2, 2]} and msg["usage"]["output_tokens"] == 42
     assert seen == [("tool", "add_box")]
-    assert sent["body"]["stream"] is True and sent["body"]["fallbacks"] == [{"model": "claude-opus-4-8"}]
-    assert "server-side-fallback" in sent["beta"] and sent["body"]["tools"][0]["eager_input_streaming"]
+    assert sent["body"]["stream"] is True and sent["body"]["fallbacks"] == [{"model": "claude-opus-5"}]
+    assert "server-side-fallback" in sent["beta"] and "thinking-display-updates" in sent["beta"]
+    assert sent["body"]["tools"][0]["eager_input_streaming"] and "betas" not in sent["body"]
+    assert "betas" in request  # the caller's request is not modified
