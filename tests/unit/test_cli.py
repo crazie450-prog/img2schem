@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from img2schem.cli import app
@@ -148,3 +149,29 @@ def test_materials_from_a_photo_then_compile(tmp_path, monkeypatch):
     assert (tmp_path / "run" / "debug_layout.png").is_file() and (tmp_path / "run" / "rectified.png").is_file()
     r = runner.invoke(app, ["compile", "h.spec.json", "--out", "out"])
     assert r.exit_code == 0, r.output
+
+
+@pytest.mark.replay
+def test_design_replays_a_session_and_compiles(tmp_path, monkeypatch):
+    from fixtures.designer import synthetic
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _env(tmp_path, monkeypatch)  # isolated config, and no stray .env from the working folder
+    session = synthetic.write(tmp_path / "s.jsonl")
+    out = tmp_path / "run"
+    r = runner.invoke(app, ["design", "a stone watchtower", "--name", "tower", "--replay", str(session),
+                            "--out", str(out), "--no-copy"])  # fmt: skip
+    assert r.exit_code == 0, r.output
+    assert (out / "tower.schematic").is_file() and (out / "preview_iso.png").is_file()
+    record = json.loads((out / "design.json").read_text())
+    assert record["stopped"] == "finished" and record["turns"] == 3 and record["model"] == "claude-opus-5"
+    assert json.loads((out / "report.json").read_text())["usage"]["design"]["turns"] == 3
+    assert len(json.loads((out / "tower.ops.json").read_text())["ops"]) == 6
+
+
+def test_design_live_needs_a_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _env(tmp_path, monkeypatch)
+    r = runner.invoke(app, ["design", "a hut", "--out", str(tmp_path / "o")])
+    assert r.exit_code == 4 and ".env" in r.output
+    assert runner.invoke(app, ["design", "a hut", "--budget", "huge"]).exit_code == 4

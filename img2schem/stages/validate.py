@@ -238,3 +238,24 @@ def failed(issues: list[Issue], strict: bool = False) -> bool:
 
 def write_issues(issues: list[Issue], path: Path) -> None:
     path.write_text(json.dumps([i.model_dump() for i in issues], indent=1), encoding="utf-8")
+
+
+def check_build(grid: BlockGrid, labels: np.ndarray, style: dict[str, str], budgets: Budgets,
+                palette: Palette | None, world: WorldPalette | None) -> list[Issue]:  # fmt: skip
+    """What ``compile`` runs on a compiled build: auto-fixes (applied to ``grid``), the grid rules and the
+    trim/wall contrast check."""
+    shape_of = shape_lookup(palette)
+    issues = autofix(grid, shape_of)
+    issues += validate_grid(grid, budgets, world, shape_of=shape_of, labels=labels)
+    if palette is not None:
+        from img2schem.palette.query import PaletteIndex
+
+        idx = PaletteIndex(palette)
+
+        def lab_of(block: str) -> tuple[float, float, float] | None:
+            hit = idx.usable(block)
+            return hit[1].lab if hit else None
+
+        issues += contrast_issues({k: v for k, v in style.items() if not v.startswith("$")}, lab_of)
+    return issues
+

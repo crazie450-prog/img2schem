@@ -1,0 +1,8 @@
+# Default settings for the Claude designer (layered under the user's config.yaml, SOW R11.1).
+# Model IDs live here and in pricing.yaml only (CLAUDE.md). Verify them at docs.claude.com.
+claude:
+  model: claude-opus-5            # the designer
+  fallback_model: claude-opus-4-8 # re-runs a turn server-side if the designer declines it (same price)
+  effort: high                    # low | medium | high | xhigh | max
+  max_tokens: 32000               # per turn (thinking + text + tool inputs)
+  turn_cap: 30                    # SOW RD.1

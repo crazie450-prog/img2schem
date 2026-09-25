@@ -5,8 +5,8 @@ Photo (or text description) of a building → a designed Minecraft build → a W
 including mods.
 
 The spec is [docs/SOW.md](docs/SOW.md), re-scoped for GTNH by [docs/SOW_GTNH.md](docs/SOW_GTNH.md).
-**Status: Phase 0** (instance and world detection, the `.schematic` writer/reader, previews, structural
-validation). Photo analysis, the build engine and the Claude designer come in later phases.
+**Status: Phase 2 in progress**: the engine, template, validator and photo stages (Phase 1) work; the
+Claude designer builds from a text description. Photo analysis by Claude, critique and edits come next.
 
 ## Quick start
 
@@ -15,14 +15,14 @@ Windows PowerShell (5.1 has no `&&`, so one command per line):
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1      # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-pip install -e ".[dev]"
+pip install -e ".[dev,vlm]"   # vlm = the Anthropic SDK for the Claude designer
 ```
 
 Linux/macOS:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,vlm]"
 ```
 
 Then:
@@ -43,6 +43,8 @@ img2schem plan examples/brick_house.spec.json  # spec.json (measured description
 img2schem compile examples/brick_house.ops.json # ops.json -> .schematic + previews + report.json (+ WorldEdit folder)
 img2schem compile examples/tower.ops.json      # a 109-tall curved tower (loft/sweep ops, docs/DSL.md)
 img2schem compile examples/courtyard.ops.json  # one component placed four ways (define/place/mirror)
+img2schem design "a stone watchtower with a spiral stair"  # Claude designs it (costs API credit), then compiles
+img2schem design "..." --budget large                    # $5 warning / $10 hard stop instead of $1 / $5
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
 img2schem preview  some.schematic --out out/prev

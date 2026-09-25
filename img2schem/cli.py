@@ -21,6 +21,7 @@ from img2schem.util.block import namespace
 
 EXIT_VALIDATION = 2
 EXIT_BAD_INPUT = 4
+EXIT_BUDGET = 5  # SOW §5.2: the API budget stopped a Claude stage
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 instance_app = typer.Typer(no_args_is_help=True, help="Discover and select Minecraft instances.")
@@ -422,7 +423,7 @@ def compile_cmd(
     from img2schem.palette.query import PaletteIndex
     from img2schem.stages.export_schem import SchemMeta, copy_to_schematics_dir, write_schematic
     from img2schem.stages.preview import render_debug_ops, write_previews
-    from img2schem.stages.validate import autofix, contrast_issues, failed, shape_lookup, validate_grid, write_issues
+    from img2schem.stages.validate import check_build, failed, write_issues
 
     s = load_settings()
     t0 = time.perf_counter()
@@ -445,18 +446,7 @@ def compile_cmd(
     out = out or Path("out") / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
     out.mkdir(parents=True, exist_ok=True)
     grid = compiled.grid.compact()
-    idx = PaletteIndex(pal) if pal else None
-    shape_of = shape_lookup(pal)
-    issues = autofix(grid, shape_of)
-    issues += validate_grid(grid, s.budgets, _active_palette(), shape_of=shape_of, labels=compiled.labels)
-    if idx is not None:
-        styled = {k: v for k, v in doc.style.items() if not v.startswith("$")}
-
-        def lab_of(block: str) -> tuple[float, float, float] | None:
-            hit = idx.usable(block)
-            return hit[1].lab if hit else None
-
-        issues += contrast_issues(styled, lab_of)
+    issues = check_build(grid, compiled.labels, doc.style, s.budgets, pal, _active_palette())
     write_issues(issues, out / "issues.json")
     for i in issues:
         fix = " (fixed)" if i.autofix_applied else ""
@@ -495,6 +485,82 @@ def compile_cmd(
     if copy and inst and inst.worldedit and inst.schematics_dir and s.export.write_to_instance:
         target = copy_to_schematics_dir(schem, Path(inst.schematics_dir))
         console.print(f"copied -> {target}   in game: //schem load {target.stem}   then //paste -a")
+
+
+@app.command()
+def design(
+    prompt: str = typer.Argument(..., help='What to build, e.g. "a stone watchtower with a spiral stair".'),
+    name: str = typer.Option("design", "--name", help="Schematic name."),
+    out: Path | None = typer.Option(None, "--out", help="Output directory (default: out/<name>_<timestamp>)."),
+    budget: str = typer.Option("default", "--budget", help="API budget: default ($1 warn / $5 stop) or large."),
+    replay: Path | None = typer.Option(None, "--replay", help="Replay a recorded session.jsonl (no API calls)."),
+    copy: bool = typer.Option(True, "--copy/--no-copy", help="Also copy into the instance's WorldEdit folder."),
+) -> None:
+    """Claude designs a build from a description (S3), then it compiles like `compile`. Costs API credit."""
+    import time
+
+    from img2schem.designer.prompt import PROMPT_VERSION, system_prompt
+    from img2schem.designer.session import run_design
+    from img2schem.designer.tools import DesignState, tool_specs
+    from img2schem.designer.transport import LiveTransport, RecordingTransport, ReplayTransport, Transport
+    from img2schem.engine.ops import OpsDoc
+
+    s = load_settings()
+    try:
+        limit = s.claude.budget(budget)
+    except ValueError as e:
+        raise _fail(str(e)) from None
+    out = out or Path("out") / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
+    out.mkdir(parents=True, exist_ok=True)
+    transport: Transport
+    if replay:
+        transport = ReplayTransport(replay)
+    else:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise _fail("ANTHROPIC_API_KEY is not set: copy .env.example to .env and fill it in")
+        try:
+            transport = RecordingTransport(LiveTransport(s.claude.fallback_model), out / "session.jsonl")
+        except ImportError:
+            raise _fail('the Anthropic SDK is not installed: pip install -e ".[vlm]"') from None
+
+    pal = _load_palette()
+    state = DesignState(OpsDoc(), pal, s.budgets, _active_palette())
+    brief = (f"Design this build: {prompt}\n\nStart from nothing: set the style slots, build it with ops, check "
+             "it with render_views, then call finish.")  # fmt: skip
+    console.print(f"designing with {s.claude.model} (budget {budget}: warn ${limit.warn:.2f}, stop ${limit.stop:.2f})")
+
+    def progress(kind: str, text: str) -> None:
+        if kind == "tool":
+            console.print(f"  [cyan]{text}[/cyan]")
+        elif kind == "text":
+            console.print(text, end="", style="dim", markup=False, highlight=False)
+
+    def on_warning(msg: str) -> None:
+        console.print(f"[yellow]warning:[/yellow] {msg}")
+
+    try:
+        result = run_design(state, brief, system_prompt(pal), tool_specs(), s.claude, limit, transport, budget,
+                            progress, on_warning)  # fmt: skip
+    except Exception as e:  # keep what was built before an API or network failure
+        (out / "ops.json").write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
+        raise _fail(f"design stopped: {type(e).__name__}: {e} (ops so far: {out / 'ops.json'})", 3) from None
+    ops_path = out / f"{name}.ops.json"
+    ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
+    record = {"prompt": prompt, "model": s.claude.model, "prompt_version": PROMPT_VERSION, "budget": budget,
+              **{k: v for k, v in vars(result).items() if k != "text"}, "cost_usd": round(result.cost_usd, 4)}
+    (out / "design.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+    console.print(f"\n{result.stopped} after {result.turns} turns, ${result.cost_usd:.2f}")
+    if result.summary:
+        console.print(result.summary)
+    if not state.doc.ops:
+        raise _fail("no ops were produced", EXIT_BUDGET if result.stopped == "budget" else 3)
+    compile_cmd(ops_path, out=out, name=name, copy=copy)
+    report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    report["usage"] = {"design": {"cost_usd": round(result.cost_usd, 4), "turns": result.turns,
+                                  "stopped": result.stopped, "per_turn": result.usage}}  # fmt: skip
+    (out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    if result.stopped == "budget":
+        raise typer.Exit(EXIT_BUDGET)
 
 
 @app.command()

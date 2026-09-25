@@ -353,3 +353,34 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Palette review (Phase 1 DoD):** `img2schem palette review BLOCK...` writes a PNG sheet with each block's
   NEI icon, the measured color and its family members, so the owner can check them against the game. It runs
   on the owner's machine because the icons stay in the local dumps (SOW C16).
+
+### D-031 Claude designer, first slice: text prompt -> build
+- **Scope:** `img2schem design "PROMPT"` builds from a description with no template (the SOW's `describe`
+  mode taken all the way to ops). Photo analysis (S2), the template-plus-photo design (`plan --designer
+  claude`), the critique loop and `edit` follow on the same client, tools and loop.
+- **Model:** `claude-opus-5` (adaptive thinking, effort `high`, streaming, `max_tokens` 32000 per turn), with
+  the server-side fallback to `claude-opus-4-8` (same price, so the budget math holds) when a turn is declined.
+  IDs live in `designer/data/defaults.yaml`, prices in `designer/data/pricing.yaml` (CLAUDE.md), both
+  overridable from config.yaml.
+- **Tools** follow SOW §6.7: one `add_<op>` per op with the input schema generated from engine/ops.py
+  (`op` implied by the tool, pydantic titles stripped, define's nested ops as plain objects: 22k → 10k
+  tokens), `replace_op`, `delete_op`, `set_style`, `search_palette`, `get_family`, `get_state_summary`,
+  `render_views`, `finish`. **Deviation:** `render_views` is offered during the initial design too (the SOW
+  offers it only in critique): a prompt-only build has no photo to critique against, and seeing the build is
+  how Claude catches proportion mistakes. `match_materials` and `validate` are folded into
+  `search_palette` and every tool result (each change returns the validator's issues).
+- **Every change is checked:** validated by pydantic, compiled, run through the same `check_build` as
+  `compile`; a change that errors is rolled back and returned as `is_error` (RD.3), and an op failing 3 times
+  in a row is skipped with a warning.
+- **Loop:** a manual loop rather than the SDK's tool runner, because every turn needs the budget check before
+  the call, all tool results of a turn go back in one message, and live/recorded/replayed sessions must take
+  the same path. Tool inputs stream eagerly and are validated before use; a turn cut off at `max_tokens` runs
+  none of its tools; a refusal stops the design.
+- **Caching:** the system prompt (role, build-craft guide, docs/DSL.md, a ~5k-token palette summary of the
+  owner's full blocks with stairs) and the tool list are a fixed prefix with a cache breakpoint; the
+  conversation is cached incrementally. Prompt version `v1` is recorded in `design.json`.
+- **Budget (D-030):** before each turn, spend so far + the turn's worst case (all input at the cache-write rate
+  + `max_tokens` of output) must fit under the hard stop; a stop keeps and compiles the ops so far and exits 5.
+- **Recording and replay:** live runs write `session.jsonl` into the run folder; `--replay` re-runs one with
+  no API calls. CI replays a synthetic session (tests/fixtures/designer), and the live SDK path is tested
+  against a mock HTTP server; real recordings from the owner's runs can be added as fixtures.

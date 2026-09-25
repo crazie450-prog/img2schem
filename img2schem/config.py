@@ -41,6 +41,12 @@ def _default_budgets() -> dict[str, BudgetUSD]:
 
 
 class ClaudeSettings(BaseModel):
+    # Model IDs and the rest come from designer/data/defaults.yaml (CLAUDE.md: never hard-coded).
+    model: str
+    fallback_model: str | None = None
+    effort: str = "high"
+    max_tokens: int = Field(32000, ge=1024)
+    turn_cap: int = Field(30, ge=1)
     budget_usd: dict[str, BudgetUSD] = Field(default_factory=_default_budgets)
 
     def budget(self, name: str = "default") -> BudgetUSD:
@@ -62,7 +68,7 @@ class Settings(BaseModel):
     schem_version: int = 2
     budgets: Budgets = Field(default_factory=Budgets)
     export: ExportSettings = Field(default_factory=ExportSettings)
-    claude: ClaudeSettings = Field(default_factory=ClaudeSettings)
+    claude: ClaudeSettings = Field(default_factory=lambda: ClaudeSettings.model_validate(_packaged()["claude"]))
     cache_dir: str = "~/.cache/img2schem"
 
     @property
@@ -94,8 +100,12 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _packaged() -> dict[str, Any]:
+    return _read_yaml(Path(__file__).parent / "designer" / "data" / "defaults.yaml")
+
+
 def load_settings() -> Settings:
-    data: dict[str, Any] = {}
+    data: dict[str, Any] = _packaged()
     for p in (user_config_path(), Path("config.yaml")):
         data = _deep_merge(data, _read_yaml(p))
     for key, field in (

@@ -1,0 +1,171 @@
+import json
+
+import pytest
+from fixtures.designer import synthetic
+from fixtures.designer.synthetic import response, tool
+
+from img2schem.config import Budgets, BudgetUSD, Settings
+from img2schem.designer.pricing import usage_cost, worst_case
+from img2schem.designer.session import run_design
+from img2schem.designer.tools import OP_CLASSES, DesignState, tool_specs
+from img2schem.designer.transport import ReplayTransport, request_digest
+from img2schem.engine.ops import OpsDoc
+
+SETTINGS = Settings().claude
+BUDGET = BudgetUSD(warn=1.0, stop=5.0)
+
+
+class Scripted:
+    """A transport answering from a list and keeping every request."""
+
+    def __init__(self, turns):
+        self.turns, self.requests = list(turns), []
+
+    def send(self, request, progress=None):
+        self.requests.append(json.loads(json.dumps(request)))
+        return self.turns.pop(0)
+
+
+def new_state():
+    return DesignState(OpsDoc(), None, Budgets())
+
+
+def design(turns, budget=BUDGET, state=None):
+    state = state or new_state()
+    t = Scripted(turns)
+    return state, t, run_design(state, "a watchtower", "SYSTEM", tool_specs(), SETTINGS, budget, t)
+
+
+def test_tools_are_generated_from_the_op_models():
+    specs = {t["name"]: t for t in tool_specs()}
+    assert {f"add_{c.model_fields['op'].default}" for c in OP_CLASSES} <= set(specs)
+    loft = specs["add_loft"]["input_schema"]
+    assert "op" not in loft["properties"] and "keys" in loft["required"]
+    assert "from" in specs["add_box"]["input_schema"]["properties"]  # aliases, as in ops.json
+    assert len(json.dumps(specs["add_define"])) < 3000  # nested ops are not the whole union again
+    assert "render_views" not in {t["name"] for t in tool_specs(render=False)}
+    assert all(t["eager_input_streaming"] for t in specs.values())
+
+
+@pytest.mark.replay
+def test_replay_builds_the_recorded_design(tmp_path):
+    state = new_state()
+    t = ReplayTransport(synthetic.write(tmp_path / "s.jsonl"))
+    r = run_design(state, "a watchtower", "SYSTEM", tool_specs(), SETTINGS, BUDGET, t)
+    assert (r.stopped, r.turns, r.summary) == ("finished", 3, "A three-storey stone watchtower with a spiral stair.")
+    assert [o.id for o in state.doc.ops] == ["floors", "walls", "door", "windows", "stair", "roof"]
+    assert state.doc.style["roof.stairs"] == "minecraft:brick_stairs"
+    assert not [i for i in state.issues if i.severity == "error"]
+    assert r.cost_usd == pytest.approx(3 * usage_cost("claude-opus-5", synthetic.USAGE))
+    assert r.text == ["A 7x7 stone watchtower, 3 storeys, with a spiral stair and a hip roof."]
+    counts = state.compiled.grid.counts()
+    assert counts["minecraft:wooden_door@3"] == 1 and any("oak_stairs" in b for b in counts)
+
+
+def test_tool_results_go_back_with_errors_and_images():
+    turns = [*synthetic.TURNS[:1],
+             response([tool(4, "add_box", {"id": "bad", "from": [0, 0, 0], "to": [1, 1, 1], "mat": "nope:block@99"}),
+                       tool(5, "add_walls", {"id": "walls", "footprint": synthetic.FOOT, "y0": 1, "height": 3}),
+                       tool(6, "render_views", {"views": ["iso", "top"]})]),
+             response([{"type": "text", "text": "Done."}], stop="end_turn")]  # fmt: skip
+    state, t, r = design(turns)
+    results = t.requests[2]["messages"][-1]["content"]
+    assert [x["tool_use_id"] for x in results] == ["toolu_004", "toolu_005", "toolu_006"]  # one message, in order
+    assert results[0]["is_error"] and "meta" in results[0]["content"]
+    assert results[1]["is_error"] and "exists" in results[1]["content"]  # duplicate id
+    images = [c for c in results[2]["content"] if c["type"] == "image"]
+    assert len(images) == 2 and images[0]["source"]["media_type"] == "image/png"
+    assert r.stopped == "end_turn" and [o.id for o in state.doc.ops] == ["floors", "walls"]
+    # the conversation is replayed to the API as sent: thinking blocks unchanged, tools and system cached
+    assert t.requests[1]["messages"][1]["content"][0] == {"type": "thinking", "thinking": "", "signature": "sig"}
+    assert t.requests[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert t.requests[0]["thinking"] == {"type": "adaptive"}
+
+
+def test_same_op_failing_three_times_is_skipped():
+    bad = {"id": "tower", "from": [0, 0, 0], "to": [0, 300, 0], "mat": "minecraft:stone"}  # taller than a world
+    turns = [response([tool(i, "add_box", bad)]) for i in range(3)] + [response([], stop="end_turn")]
+    state, t, r = design(turns)
+    last = t.requests[3]["messages"][-1]["content"][0]["content"]
+    assert "rolled back" in last and "skip it" in last
+    assert r.warnings == ["op 'tower' failed 3 times; skipped"] and state.doc.ops == []
+
+
+def test_budget_warns_then_stops_before_passing_the_limit():
+    heavy = {"input_tokens": 100_000, "output_tokens": 20_000, "cache_creation_input_tokens": 0,
+             "cache_read_input_tokens": 0}  # $1.00 a turn at $5 / $25 per million
+    turns = [response([tool(i, "get_state_summary", {})], usage=heavy) for i in range(10)]
+    state, t, r = design(turns)
+    assert r.stopped == "budget" and "--budget large" in r.warnings[-1]
+    assert "past the default budget's $1.00 warning" in r.warnings[0]
+    assert r.cost_usd <= BUDGET.stop and r.cost_usd + worst_case("claude-opus-5", 120_000, 32000) > BUDGET.stop
+
+
+def test_a_truncated_turn_runs_no_tools():
+    turns = [response([tool(1, "add_box", {"id": "b", "from": [0, 0, 0], "to": [3, 3, 3]})], stop="max_tokens"),
+             response([], stop="end_turn")]  # fmt: skip
+    state, t, r = design(turns)
+    assert state.doc.ops == [] and "max_tokens" in t.requests[1]["messages"][-1]["content"][0]["content"]
+
+
+def test_refusal_stops():
+    state, t, r = design([response([{"type": "text", "text": "..."}], stop="refusal")])
+    assert r.stopped == "refusal" and len(t.requests) == 1
+
+
+def test_state_editing_and_rollback():
+    s = new_state()
+    assert not s.execute("set_style", {"slots": {"w": "minecraft:stone", "x": "minecraft:dirt"}}).is_error
+    assert not s.execute("add_box", {"id": "a", "from": [0, 0, 0], "to": [4, 0, 4], "mat": "$w"}).is_error
+    r = s.execute("replace_op", {"id": "a", "op": {"op": "box", "id": "a", "from": [0, 0, 0], "to": [5, 0, 5],
+                                                   "mat": "$w"}})  # fmt: skip
+    assert not r.is_error and json.loads(r.content)["op"]["cells"] == 36
+    bad = s.execute("add_box", {"id": "sky", "from": [0, 0, 0], "to": [0, 260, 0], "mat": "$w"})
+    assert bad.is_error and "R10.2" in bad.content and [o.id for o in s.doc.ops] == ["a"]  # rolled back
+    assert s.compiled.grid.nonair() == 36
+    assert s.execute("set_style", {"slots": {"x": None}}).is_error is False and "x" not in s.doc.style
+    assert s.execute("delete_op", {"id": "missing"}).is_error
+    assert not s.execute("delete_op", {"id": "a"}).is_error and s.doc.ops == []
+    assert s.execute("finish", {"summary": "ok"}).done and s.summary == "ok"
+    assert s.execute("nope", {}).is_error and s.execute("add_box", "not json").is_error
+
+
+def test_request_digest_is_stable():
+    assert request_digest({"b": 1, "a": [1, 2]}) == request_digest({"a": [1, 2], "b": 1})
+
+
+def test_live_transport_request_and_stream_parsing():
+    """The SDK path without network: a mock HTTP server answers with a streamed tool call."""
+    anthropic = pytest.importorskip("anthropic")
+    httpx2 = pytest.importorskip("httpx2")
+    from img2schem.designer.transport import LiveTransport
+
+    events = [
+        {"type": "message_start", "message": {"id": "m", "type": "message", "role": "assistant",
+                                              "model": "claude-opus-5", "content": [], "stop_reason": None,
+                                              "usage": {"input_tokens": 10, "output_tokens": 1}}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1",
+                                                                     "name": "add_box", "input": {}}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta",
+                                                             "partial_json": '{"id": "b", "to": [2, 2, 2]}'}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 42}},
+        {"type": "message_stop"},
+    ]  # fmt: skip
+    sent = {}
+
+    def handler(request):
+        sent["body"], sent["beta"] = json.loads(request.content), request.headers.get("anthropic-beta")
+        body = "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events)
+        return httpx2.Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+    client = anthropic.Anthropic(api_key="test", http_client=anthropic.DefaultHttpxClient(
+        transport=httpx2.MockTransport(handler)))  # fmt: skip
+    seen = []
+    request = {"model": "claude-opus-5", "max_tokens": 1000, "messages": [{"role": "user", "content": "hi"}],
+               "tools": tool_specs()[:1], "thinking": {"type": "adaptive"}, "cache_control": {"type": "ephemeral"}}
+    msg = LiveTransport("claude-opus-4-8", client=client).send(request, lambda k, t: seen.append((k, t)))
+    assert msg["content"][0]["input"] == {"id": "b", "to": [2, 2, 2]} and msg["usage"]["output_tokens"] == 42
+    assert seen == [("tool", "add_box")]
+    assert sent["body"]["stream"] is True and sent["body"]["fallbacks"] == [{"model": "claude-opus-4-8"}]
+    assert "server-side-fallback" in sent["beta"] and sent["body"]["tools"][0]["eager_input_streaming"]
