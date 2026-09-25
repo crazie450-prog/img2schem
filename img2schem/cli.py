@@ -30,6 +30,15 @@ palette_app = typer.Typer(no_args_is_help=True, help="Block colors and shapes, i
 app.add_typer(world_app, name="world")
 app.add_typer(palette_app, name="palette")
 console = Console()
+
+
+@app.callback()
+def _startup() -> None:
+    """Photo or description -> WorldEdit .schematic for GT New Horizons (Minecraft 1.7.10)."""
+    from img2schem.util.env import load_dotenv
+
+    for folder in (Path.cwd(), user_config_path().parent):  # secrets only via env vars / .env (never committed)
+        load_dotenv(folder / ".env")
 err = Console(stderr=True)
 
 JsonOpt = typer.Option(False, "--json", help="Machine-readable summary on stdout.")
@@ -252,6 +261,29 @@ def palette_family(block: str = typer.Argument(..., help="A usable full block, e
     for shape, member in idx.family(block).items():
         m = idx.usable(member) if member else None
         console.print(f"  {shape:10} {member or '-'}" + (f"  {m[1].display}  {m[1].hex}" if m else ""))
+
+
+@palette_app.command("review")
+def palette_review(
+    blocks: list[str] = typer.Argument(..., help="Full blocks to check, e.g. chisel:marble minecraft:stonebrick."),
+    out: Path = typer.Option(Path("out/palette_review.png"), help="Where to write the sheet."),
+) -> None:
+    """A PNG sheet per block: its icon, measured color and family (stairs, slab, wall, fence, gate)."""
+    from img2schem.palette.query import PaletteIndex
+    from img2schem.palette.review import review_sheet
+
+    pal = _load_palette(required=True)
+    assert pal is not None
+    idx = PaletteIndex(pal)
+    for b in blocks:
+        try:
+            if idx.usable(b) is None:
+                raise ValueError(f"{b} is not a usable block (find it with `img2schem palette search`)")
+        except ValueError as e:
+            raise _fail(str(e)) from None
+    out.parent.mkdir(parents=True, exist_ok=True)
+    review_sheet(idx, blocks).save(out)
+    console.print(f"wrote {out}")
 
 
 # ---------------------------------------------------------------- files
@@ -552,7 +584,9 @@ def doctor() -> None:
 
     console.print(f"config: {user_config_path()}")
     key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    line(key, "ANTHROPIC_API_KEY set" if key else "ANTHROPIC_API_KEY not set (needed from Phase 2)")
+    line(key, "ANTHROPIC_API_KEY set" if key else "ANTHROPIC_API_KEY not set: copy .env.example to .env and fill it in")
+    budgets = ", ".join(f"{n} warn ${b.warn:.2f} / stop ${b.stop:.2f}" for n, b in s.claude.budget_usd.items())
+    console.print(f"  API budget per build: {budgets}")
     if not s.instance:
         line(False, "no active instance (`img2schem instance use NAME`)")
         return

@@ -63,6 +63,10 @@ railings. Engine support so far: `spiral_stair`, loft `lights` (D-027). The vali
   save. Chat revisions and hand edits work on the same document.
 - G2.4 A **preview** of every version: the 3D viewport of §6.9 plus the PNG previews.
 
+**G3 — API budget per build** (replaces SOW §1.5's US$1 / US$3): a warning at **US$1** and a hard stop at
+**US$5**; with `--budget large`, a warning at **US$5** and a hard stop at **US$10**. The hard stop is checked
+before each call against its worst-case cost, so it is never passed (D-030).
+
 ## Open questions
 
 - **Q1 — Where do colors, metadata meanings and shapes come from?** *Decided for Phase 1: (a) NEI dumps,

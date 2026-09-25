@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Budgets(BaseModel):
@@ -20,6 +20,33 @@ class Budgets(BaseModel):
     max_nonair: int = 1_000_000
     hard_max_total: int = 16_000_000
     max_height: int = 256  # Minecraft 1.7.10 worlds end at y = 256: a taller build cannot be pasted
+
+
+class BudgetUSD(BaseModel):
+    """Per-build API spend: a warning once ``warn`` is passed, a clean stop before ``stop`` would be passed."""
+
+    warn: float = Field(gt=0)
+    stop: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _order(self) -> BudgetUSD:
+        if self.stop < self.warn:
+            raise ValueError(f"budget stop {self.stop} is below warn {self.warn}")
+        return self
+
+
+def _default_budgets() -> dict[str, BudgetUSD]:
+    # Owner decision D-030: US$1 / US$5 per build by default, US$5 / US$10 with --budget large.
+    return {"default": BudgetUSD(warn=1.0, stop=5.0), "large": BudgetUSD(warn=5.0, stop=10.0)}
+
+
+class ClaudeSettings(BaseModel):
+    budget_usd: dict[str, BudgetUSD] = Field(default_factory=_default_budgets)
+
+    def budget(self, name: str = "default") -> BudgetUSD:
+        if name not in self.budget_usd:
+            raise ValueError(f"no budget {name!r} (have: {', '.join(self.budget_usd)})")
+        return self.budget_usd[name]
 
 
 class ExportSettings(BaseModel):
@@ -35,6 +62,7 @@ class Settings(BaseModel):
     schem_version: int = 2
     budgets: Budgets = Field(default_factory=Budgets)
     export: ExportSettings = Field(default_factory=ExportSettings)
+    claude: ClaudeSettings = Field(default_factory=ClaudeSettings)
     cache_dir: str = "~/.cache/img2schem"
 
     @property

@@ -341,3 +341,15 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   Random choice doesn't form checkerboards, so no extra rule is needed.
 - **`railing`** steps along the longer remaining axis, so consecutive blocks always share a face.
 - **In-game check pending:** doors facing east, south and west (`examples/courtyard.ops.json`).
+
+### D-030 API key via .env, owner budgets, palette review sheet
+- **API key:** the CLI loads `.env` from the working folder, then from the config folder, at startup; variables
+  already in the environment win and empty values are ignored. `.env.example` documents it; `.env` stays
+  git-ignored. A few lines of our own instead of python-dotenv (no new dependency).
+- **Budgets (owner, replaces SOW §1.5):** `claude.budget_usd` in config: `default` warn US$1 / stop US$5,
+  `large` warn US$5 / stop US$10 (selected with `--budget large` once the designer exists). `BudgetGuard.check`
+  runs before each API call with its worst-case cost (input + `max_tokens` output at list price), so the stop
+  is never overshot; `add` records the actual cost and warns once.
+- **Palette review (Phase 1 DoD):** `img2schem palette review BLOCK...` writes a PNG sheet with each block's
+  NEI icon, the measured color and its family members, so the owner can check them against the game. It runs
+  on the owner's machine because the icons stay in the local dumps (SOW C16).

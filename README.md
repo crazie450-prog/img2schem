@@ -34,6 +34,7 @@ img2schem world list                     # worlds of that instance
 img2schem world use img2schem-test       # its level.dat lists the valid block names
 img2schem palette import <.minecraft\dumps>  # colors + shapes from NEI data dumps (see below)
 img2schem palette search "stone brick" --shape stairs
+img2schem palette review chisel:marble@3 minecraft:stonebrick  # PNG sheet: icon, measured color, family
 img2schem doctor                         # WorldEdit, schematics folder, world, palette
 
 img2schem materials my.spec.json photo.jpg --corners "x,y x,y x,y x,y" [--roof-box "x0,y0,x1,y1"]
@@ -50,6 +51,11 @@ img2schem validate some.schematic [--strict]
 
 In game: `//schem load <name>`, stand where the build should go **facing south**, `//paste -a`.
 See [docs/TEST_BED.md](docs/TEST_BED.md).
+
+Claude API key (Phase 2): copy `.env.example` to `.env` in the repo folder and put your key after
+`ANTHROPIC_API_KEY=`. `.env` is git-ignored. `img2schem doctor` shows whether the key was found (never its
+value) and the per-build budgets: a warning at US$1 and a hard stop at US$5, or US$5 / US$10 with
+`--budget large`.
 
 NEI dumps: in GTNH open the inventory, click NEI's wrench button, Tools → Data Dumps, and run the Block dump
 and the Item Panel dump as **CSV** and as **PNG**. They land in `.minecraft\dumps\`.
