@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -28,7 +29,9 @@ class LiveTransport:
     def __init__(self, fallback_model: str | None = None, client: Any = None):
         import anthropic  # optional dependency: pip install -e ".[vlm]"
 
-        self.client = client or anthropic.Anthropic()
+        # A key that isn't scoped to a workspace must name one on every request (from .env).
+        ws = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+        self.client = client or anthropic.Anthropic(default_headers={"anthropic-workspace-id": ws} if ws else None)
         self.fallback_model = fallback_model
 
     def send(self, request: dict[str, Any], progress: Progress | None = None) -> dict[str, Any]:

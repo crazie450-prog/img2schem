@@ -543,7 +543,9 @@ def design(
                             progress, on_warning)  # fmt: skip
     except Exception as e:  # keep what was built before an API or network failure
         (out / "ops.json").write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
-        raise _fail(f"design stopped: {type(e).__name__}: {e} (ops so far: {out / 'ops.json'})", 3) from None
+        hint = ("\nhint: set ANTHROPIC_WORKSPACE_ID in .env (see .env.example), or use a key made inside a "
+                "workspace") if "workspace" in str(e) else ""  # fmt: skip
+        raise _fail(f"design stopped: {type(e).__name__}: {e} (ops so far: {out / 'ops.json'}){hint}", 3) from None
     ops_path = out / f"{name}.ops.json"
     ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
     record = {"prompt": prompt, "model": s.claude.model, "prompt_version": PROMPT_VERSION, "budget": budget,
@@ -652,6 +654,8 @@ def doctor() -> None:
     console.print(f"config: {user_config_path()}")
     key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     line(key, "ANTHROPIC_API_KEY set" if key else "ANTHROPIC_API_KEY not set: copy .env.example to .env and fill it in")
+    ws = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    console.print(f"  API workspace: {ws}" if ws else "  API workspace: none (only needed for keys without one)")
     budgets = ", ".join(f"{n} warn ${b.warn:.2f} / stop ${b.stop:.2f}" for n, b in s.claude.budget_usd.items())
     console.print(f"  API budget per build: {budgets}")
     if not s.instance:

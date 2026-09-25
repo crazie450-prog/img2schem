@@ -200,3 +200,15 @@ def test_live_transport_request_and_stream_parsing():
     assert "server-side-fallback" in sent["beta"] and "thinking-display-updates" in sent["beta"]
     assert sent["body"]["tools"][0]["eager_input_streaming"] and "betas" not in sent["body"]
     assert "betas" in request  # the caller's request is not modified
+
+
+def test_live_transport_sends_the_workspace_header(monkeypatch):
+    pytest.importorskip("anthropic")
+    from img2schem.designer.transport import LiveTransport
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_123")
+    assert LiveTransport().client.default_headers["anthropic-workspace-id"] == "wrkspc_123"
+    monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID")
+    assert "anthropic-workspace-id" not in LiveTransport().client.default_headers
+
