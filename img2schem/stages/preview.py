@@ -16,7 +16,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+from img2schem.engine.materials import guess_shape
 from img2schem.models import BlockGrid, Palette
+from img2schem.util.block import parse_block
 
 BG = (246, 246, 244)
 SHADE = {"top": 1.0, "front": 0.85, "side": 0.7}
@@ -70,24 +72,57 @@ def render_top(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> 
     return _to_image(cells.T, _palette_rgb(grid, palette), SHADE["top"], px)
 
 
+Box = tuple[float, float, float, float, float, float]  # x0, y0, z0, x1, y1, z1 within a unit cell
+STAIR_BACK: dict[int, Box] = {0: (0.5, 0, 0, 1, 1, 1), 1: (0, 0, 0, 0.5, 1, 1), 2: (0, 0, 0.5, 1, 1, 1),
+                              3: (0, 0, 0, 1, 1, 0.5)}  # fmt: skip
+
+
+def block_parts(block: str, palette: Palette | None = None) -> list[Box] | None:
+    """The boxes a partial block is drawn as (stairs, slabs); None for a full cube."""
+    if block == "minecraft:air":
+        return None
+    name, meta = parse_block(block)
+    blk = palette.blocks.get(name) if palette else None
+    shape = blk.shape if blk else guess_shape(name)
+    if shape == "slab":
+        top = name.endswith("_top") or (meta & 8 and not (blk and blk.top_block))
+        return [(0, 0.5, 0, 1, 1, 1)] if top else [(0, 0, 0, 1, 0.5, 1)]
+    if shape == "stairs":
+        down = bool(meta & 4)
+        bx0, _, bz0, bx1, _, bz1 = STAIR_BACK[meta & 3]
+        half = (0, 0.5, 0, 1, 1, 1) if down else (0, 0, 0, 1, 0.5, 1)
+        back = (bx0, 0, bz0, bx1, 0.5, bz1) if down else (bx0, 0.5, bz0, bx1, 1, bz1)
+        return [half, back]
+    return None
+
+
 def render_iso(
     grid: BlockGrid, px: int = 8, palette: Palette | None = None, colors: np.ndarray | None = None
 ) -> Image.Image:
-    """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower)."""
+    """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower).
+    Stairs and slabs are drawn as their boxes (not with ``colors``, the debug view)."""
     idx = grid.idx
     xs, ys, zs = idx.shape
     rgb = _palette_rgb(grid, palette) if colors is None else colors
+    parts = [None if colors is not None else block_parts(b, palette) for b in grid.palette]
     s = px
-    pad = np.pad(idx != 0, 1)
+    partial = np.array([p is not None for p in parts])[idx]
+    pad = np.pad((idx != 0) & ~partial, 1)
     solid = pad[1:-1, 1:-1, 1:-1]
     top = solid & ~pad[1:-1, 2:, 1:-1]
     north = solid & ~pad[1:-1, 1:-1, :-2]
     west = solid & ~pad[:-2, 1:-1, 1:-1]
-    cells = np.argwhere(top | north | west)
-    if len(cells) == 0:
+    boxes: list[tuple[float, int, Box, bool, bool, bool]] = []  # depth, palette index, box, faces to draw
+    for x, y, z in np.argwhere(top | north | west).tolist():
+        boxes.append((x + z - y, idx[x, y, z], (x, y, z, x + 1, y + 1, z + 1), top[x, y, z], north[x, y, z],
+                      west[x, y, z]))  # fmt: skip
+    for x, y, z in np.argwhere(partial).tolist():
+        for x0, y0, z0, x1, y1, z1 in parts[idx[x, y, z]] or []:
+            depth = x + z - y + (x0 + x1 + z0 + z1 - y0 - y1) / 2 - 0.5
+            boxes.append((depth, idx[x, y, z], (x + x0, y + y0, z + z0, x + x1, y + y1, z + z1), True, True, True))
+    if not boxes:
         return Image.new("RGB", (4 * s, 4 * s), BG)
-    order = np.argsort(-(cells[:, 0] + cells[:, 2] - cells[:, 1]), kind="stable")
-    cells = cells[order]
+    boxes.sort(key=lambda b: -b[0])
 
     ox = xs * s + s
     oy = (xs + zs) * s / 2 + ys * s + s
@@ -99,15 +134,15 @@ def render_iso(
     def pt(x: float, y: float, z: float) -> tuple[float, float]:
         return (ox + (z - x) * s, oy - (x + z) * s / 2 - y * s)
 
-    for x, y, z in cells.tolist():
-        base = rgb[idx[x, y, z]]
+    for _, i, (x0, y0, z0, x1, y1, z1), t, n, wst in boxes:
+        base = rgb[i]
         faces = []
-        if top[x, y, z]:
-            faces.append(("top", [pt(x, y + 1, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)]))
-        if north[x, y, z]:
-            faces.append(("front", [pt(x, y, z), pt(x + 1, y, z), pt(x + 1, y + 1, z), pt(x, y + 1, z)]))
-        if west[x, y, z]:
-            faces.append(("side", [pt(x, y, z), pt(x, y, z + 1), pt(x, y + 1, z + 1), pt(x, y + 1, z)]))
+        if t:
+            faces.append(("top", [pt(x0, y1, z0), pt(x1, y1, z0), pt(x1, y1, z1), pt(x0, y1, z1)]))
+        if n:
+            faces.append(("front", [pt(x0, y0, z0), pt(x1, y0, z0), pt(x1, y1, z0), pt(x0, y1, z0)]))
+        if wst:
+            faces.append(("side", [pt(x0, y0, z0), pt(x0, y0, z1), pt(x0, y1, z1), pt(x0, y1, z0)]))
         for kind, poly in faces:
             c = tuple(int(v) for v in base * SHADE[kind])
             edge = tuple(int(v * 0.8) for v in c)

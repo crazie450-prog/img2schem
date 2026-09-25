@@ -175,13 +175,33 @@ class LoftKey(BaseModel):
     rotate: float = 0.0
 
 
+class Mullions(BaseModel):
+    """Vertical ribs on a loft's walls: ``count`` lines at equal angles around the pivot, one block wide, turning
+    with the keys' ``rotate``."""
+
+    count: int = Field(ge=2)
+    mat: str
+
+
+class Lights(BaseModel):
+    """Light blocks set into a loft's floor layers (a solid loft: its top layer) on an ``every`` x ``every`` grid
+    of design coordinates, kept one block in from the edge. Lighting stops mobs spawning inside."""
+
+    every: int = Field(6, ge=2)
+    mat: str
+
+
 class Loft(OpBase):
     """A profile carried up through ``keys`` (sorted by y): taper with scale, lean with dx/dz, twist with rotate.
     Two keys with the same transform make a straight extrusion. Between keys the transform is interpolated
     ``linear`` or ``smooth`` (Catmull-Rom through the keys).
 
     ``fill``: ``solid``, or ``shell`` walls ``thickness`` blocks thick; ``floor_every`` N adds a full floor of
-    ``floor_mat`` every N levels from the bottom key (and ``caps`` closes the top and bottom)."""
+    ``floor_mat`` every N levels from the bottom key (and ``caps`` closes the top and bottom).
+
+    ``smooth``: where the surface steps in (or out) by a block between levels, the step becomes a stair of
+    ``<mat>.stairs`` rising toward the wall (upside-down under an overhang), so tapers and leans read as slopes.
+    Needs ``mat`` to be a slot whose block has stairs. ``mullions`` and ``lights`` add detail."""
 
     op: Literal["loft"] = "loft"
     profile: Profile
@@ -194,6 +214,9 @@ class Loft(OpBase):
     floor_every: int | None = Field(None, ge=1)
     floor_mat: str | None = None
     caps: bool = False
+    smooth: bool = False
+    mullions: Mullions | None = None
+    lights: Lights | None = None
 
     @model_validator(mode="after")
     def _keys(self) -> Loft:
@@ -212,6 +235,28 @@ class Sweep(OpBase):
     radius: float = Field(0.5, ge=0.5)
     interp: Literal["linear", "smooth"] = "smooth"
     mat: str
+
+
+class SpiralStair(OpBase):
+    """A spiral staircase: one stair per level from ``y0`` to ``y1`` around the ring of a (2 radius + 1)-square
+    centered on ``center`` (x, z), turning ``turn`` seen from above, around a ``column`` filling the inside.
+    Every other ring cell from ``y0`` to ``y1 + 2`` is cleared, which opens the floors it passes through: step
+    off onto a floor where the stair reaches its level. ``mat`` must be stairs (e.g. ``$floor.stairs``)."""
+
+    op: Literal["spiral_stair"] = "spiral_stair"
+    center: tuple[int, int]
+    y0: int
+    y1: int
+    radius: int = Field(1, ge=1, le=3)
+    turn: Literal["cw", "ccw"] = "ccw"
+    mat: str
+    column: str
+
+    @model_validator(mode="after")
+    def _span(self) -> SpiralStair:
+        if self.y1 <= self.y0:
+            raise ValueError("spiral_stair needs y1 > y0")
+        return self
 
 
 class Roof(OpBase):
@@ -293,7 +338,8 @@ class SetBlock(OpBase):
 
 
 Op = Annotated[
-    Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock | Loft | Sweep,
+    Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock | Loft | Sweep
+    | SpiralStair,
     Field(discriminator="op"),
 ]
 

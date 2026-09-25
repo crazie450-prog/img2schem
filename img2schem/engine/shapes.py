@@ -6,11 +6,13 @@ Cells are unit blocks; block (x, z) covers [x, x+1) x [z, z+1) and is inside a p
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
 from img2schem.engine.ops import Ellipse, Loft, LoftKey, Polygon, Profile, Sweep
+from img2schem.engine.states import Direction
 
 
 def shape_points(shape: Ellipse | Polygon) -> np.ndarray:
@@ -82,29 +84,92 @@ def profile_mask(profile: Profile, key: dict[str, float], pivot: tuple[float, fl
     return mask
 
 
-def loft_cells(op: Loft) -> tuple[list[tuple[int, int, int]], list[tuple[int, int, int]]]:
-    """(wall/solid cells, floor cells) in world coordinates."""
+Cell3 = tuple[int, int, int]
+CROSS = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+DIRS: tuple[tuple[Direction, int, int], ...] = (("east", 1, 0), ("west", -1, 0), ("south", 0, 1), ("north", 0, -1))
+
+
+@dataclass
+class LoftCells:
+    """A loft's cells by role (disjoint), in world coordinates."""
+
+    walls: list[Cell3] = field(default_factory=list)
+    floors: list[Cell3] = field(default_factory=list)
+    mullions: list[Cell3] = field(default_factory=list)
+    lights: list[Cell3] = field(default_factory=list)
+    steps: dict[Cell3, tuple[Direction, bool]] = field(default_factory=dict)  # stair: (ascend, upside down)
+
+
+def _step(solid: np.ndarray, x: int, y: int, z: int, dy: int) -> Direction | None:
+    """If the cell's face toward ``dy`` is open but the surface continues one level over on a side, the side it
+    continues on (the one with the most solid cells over it, among the 3 cells on that side)."""
+    if not 0 <= y + dy < solid.shape[1] or solid[x, y + dy, z]:
+        return None
+    best, best_n = None, 0
+    for d, ddx, ddz in DIRS:
+        if not solid[x + ddx, y + dy, z + ddz]:
+            continue
+        n = sum(int(solid[x + ddx + p * abs(ddz), y + dy, z + ddz + p * abs(ddx)]) for p in (-1, 0, 1))
+        if n > best_n:
+            best, best_n = d, n
+    return best
+
+
+def loft_cells(op: Loft) -> LoftCells:
     smooth = op.interp == "smooth"
     y0, y1 = op.keys[0].y, op.keys[-1].y
     keys = {y: key_at(op.keys, y, smooth) for y in range(y0, y1 + 1)}
     outer = np.concatenate([_transform(shape_points(op.profile.outer), k, op.pivot) for k in keys.values()])
-    lo = np.floor(outer.min(axis=0)).astype(int) - 1
-    hi = np.ceil(outer.max(axis=0)).astype(int) + 1
+    lo = np.floor(outer.min(axis=0)).astype(int) - 2
+    hi = np.ceil(outer.max(axis=0)).astype(int) + 2
     origin, size = (int(lo[0]), int(lo[1])), (int(hi[0] - lo[0] + 1), int(hi[1] - lo[1] + 1))
     kernel = np.ones((3, 3), np.uint8)
-    walls: list[tuple[int, int, int]] = []
-    floors: list[tuple[int, int, int]] = []
-    for y, key in keys.items():
+    solid = np.zeros((size[0], len(keys), size[1]), bool)  # the profile at each level, for smoothing
+    out = LoftCells()
+
+    def world(x: int, y: int, z: int) -> Cell3:
+        return int(x) + origin[0], y, int(z) + origin[1]
+
+    for i, (y, key) in enumerate(keys.items()):
         mask = profile_mask(op.profile, key, op.pivot, origin, size)
+        solid[:, i, :] = mask
         is_floor = (op.floor_every is not None and (y - y0) % op.floor_every == 0) or (op.caps and y in (y0, y1))
+        edge = mask & ~cv2.erode(mask.astype(np.uint8), CROSS, borderValue=0).astype(bool)  # face-adjacent to outside
         if op.fill == "shell" and not is_floor:
             inner = cv2.erode(mask.astype(np.uint8), kernel, iterations=op.thickness, borderValue=0).astype(bool)
             layer = mask & ~inner
         else:
             layer = mask
-        target = floors if is_floor and op.fill == "shell" else walls
-        target.extend((int(x) + origin[0], y, int(z) + origin[1]) for x, z in np.argwhere(layer))
-    return walls, floors
+        lit = np.zeros_like(mask)
+        if op.lights and (is_floor if op.fill == "shell" else y == y1):
+            gx = (np.arange(size[0]) + origin[0]) % op.lights.every == 0
+            gz = (np.arange(size[1]) + origin[1]) % op.lights.every == 0
+            lit = layer & ~edge & gx[:, None] & gz[None, :]
+        rib = np.zeros_like(mask)
+        if op.mullions and not (is_floor and op.fill == "shell"):
+            cx, cz = op.pivot[0] + key["dx"], op.pivot[1] + key["dz"]
+            px, pz = np.meshgrid(np.arange(size[0]) + origin[0] + 0.5 - cx,
+                                 np.arange(size[1]) + origin[1] + 0.5 - cz, indexing="ij")  # fmt: skip
+            pitch = 2 * math.pi / op.mullions.count
+            a = np.arctan2(pz, px) - math.radians(key["rotate"])
+            off = (a + pitch / 2) % pitch - pitch / 2  # angle to the nearest rib
+            rib = layer & (np.abs(np.sin(off)) * np.hypot(px, pz) <= 0.5 + 1e-9)  # within half a block of the line
+        target = out.floors if is_floor and op.fill == "shell" else out.walls
+        target.extend(world(x, y, z) for x, z in np.argwhere(layer & ~lit & ~rib))
+        out.lights.extend(world(x, y, z) for x, z in np.argwhere(lit))
+        out.mullions.extend(world(x, y, z) for x, z in np.argwhere(rib))
+
+    if op.smooth:
+        walls = []
+        for c in out.walls:
+            x, i, z = c[0] - origin[0], c[1] - y0, c[2] - origin[1]
+            up, down = _step(solid, x, i, z, 1), _step(solid, x, i, z, -1)
+            if up or down:
+                out.steps[c] = (up, False) if up else (down, True)  # type: ignore[assignment]
+            else:
+                walls.append(c)
+        out.walls = walls
+    return out
 
 
 def sweep_cells(op: Sweep, samples_per_block: int = 4) -> list[tuple[int, int, int]]:

@@ -285,3 +285,27 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Not yet:** stair/slab smoothing of curved surfaces; the dict-based compiler is fine at ~30k blocks (tower:
   1 s) but will need vectorizing for builds near 1M blocks.
 - **Example:** `examples/tower.ops.json` (80 × 109 × 68, ~26k blocks, vanilla + `etfuturum:smooth_stone`).
+
+### D-027 Detail and in-world usability: smoothing, mullions, lights, spiral stairs
+- **Context (owner):** refine the tower for detail and for usability *in the world* (G1 in SOW_GTNH): getting
+  between floors, lighting, reaching the terraces.
+- **Loft `smooth`:** a wall cell whose top (bottom) face is open while the profile continues one level up
+  (down) beside it becomes a stair rising toward that side, upside-down underneath. Exposure is tested against
+  the profile, not the shell's cells, so only the outer surface is smoothed. In 1.7.10 stairs don't form
+  corners, so a corner cell takes the side with the most solid cells over it. Needs `$slot.stairs`; slabs are
+  not used (a slab on a shell leaves a half-block slit).
+- **Mullions** are chosen by the perpendicular distance to each rib line (≤ 0.5 block) rather than the arc
+  distance: a rib running exactly along a cell boundary matched no cell under the arc test.
+- **Lights** skip only cells that share a face with the outside (a plus-shaped erosion). With the 3 × 3
+  erosion, small rotated floors lost most of their grid positions. Spacing checked with a block-light
+  simulation (light 15 − Manhattan distance through air/glass/panes/doors): on the tower `every` 4 leaves
+  3 dark spawnable spots inside the core versus 128 at 5; the remaining dark spots are on the rib and blade
+  ledges outside.
+- **`spiral_stair`** clears its ring from `y0` to `y1 + 2` except the stairs, so it opens every floor it
+  crosses; one op, no separate carve.
+- **Preview:** the iso view draws stairs and slabs as their boxes (the front/side/top views stay full cells),
+  so smoothing and roofs can be checked in `preview_iso.png`.
+- **Tower:** blades are quartz (vanilla quartz stairs) instead of iron, which has no stairs; terraces moved to
+  core floor levels (36, 52, 64) with double doors facing east; a spiral stair runs from the lobby to a roof
+  deck with a railing.
+- **Not verified in game yet:** east-facing doors (only north was checked, D-014) and the smoothing stairs.

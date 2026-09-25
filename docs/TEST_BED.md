@@ -59,3 +59,4 @@ should be resolved (not `id:<n>`) and the counts should match.
 | Spec edits (storeys, roof type) take effect on recompile | ✅ after D-022 |
 | 1-storey variant keeps both door halves | ✅ after D-023 (a window had replaced the door's upper half) |
 | `examples/tower.ops.json` (loft/sweep curves, 109 tall, ~26k blocks) | ✅ pasted correctly; a basis to refine for usability and detail (D-026) |
+| Tower detail pass (D-027): smoothed blades, mullions, lights, spiral stair to the roof, terrace doors facing east | ⏳ to check in game: stair directions on the blades, walking up the spiral, terrace doors open outward and stay on, no mobs inside at night |

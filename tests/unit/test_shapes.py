@@ -100,3 +100,99 @@ def test_sweep_tube():
     assert all(dist(np.array(cell) + 0.5) <= 1.5 + 1e-9 for cell in cells)
     length = 2 * math.hypot(10, 5)
     assert 0.7 < len(cells) / (math.pi * 1.5**2 * length) < 1.4
+
+
+def build_with(style, *ops):
+    return compile_ops(OpsDoc.model_validate({"style": style, "ops": list(ops)}))
+
+
+def cells_of(c):
+    """{design (x, y, z): block}."""
+    ox, oy, oz = c.origin
+    return {(int(x) - ox, int(y) - oy, int(z) - oz): c.grid.palette[c.grid.idx[x, y, z]]
+            for x, y, z in np.argwhere(c.grid.idx != 0)}  # fmt: skip
+
+
+STEP = {"east": (1, 0), "west": (-1, 0), "south": (0, 1), "north": (0, -1)}
+ASCEND = {0: "east", 1: "west", 2: "south", 3: "north"}
+COBBLE = {"a": "minecraft:cobblestone", "a.stairs": "minecraft:stone_stairs"}
+
+
+@pytest.mark.parametrize("invert", [False, True])
+def test_smooth_puts_stairs_on_the_steps(invert):
+    keys = [{"y": 0}, {"y": 8, "scale": 0.3}] if not invert else [{"y": 0, "scale": 0.3}, {"y": 8}]
+    cells = cells_of(build_with(COBBLE, {"op": "loft", "id": "cone", "profile": CIRCLE, "keys": keys,
+                                         "interp": "linear", "mat": "$a", "smooth": True}))  # fmt: skip
+    stairs = {p: b for p, b in cells.items() if "stairs" in b}
+    assert len(stairs) > 40
+    for (x, y, z), b in stairs.items():
+        meta = int(b.split("@")[1]) if "@" in b else 0
+        dx, dz = STEP[ASCEND[meta & 3]]
+        dy = -1 if invert else 1
+        assert bool(meta & 4) is invert  # upside-down under an overhang
+        assert (x, y + dy, z) not in cells  # the open face...
+        assert (x + dx, y + dy, z + dz) in cells  # ...and the stair rises toward where the surface continues
+    top = max(y for _, y, _ in cells) if not invert else 0
+    assert not any("stairs" in b for (_, y, _), b in cells.items() if y == top)  # flat top/bottom stays full
+
+
+def test_smooth_needs_stairs():
+    from img2schem.engine.compiler import CompileError
+
+    cone = {"op": "loft", "id": "l", "profile": CIRCLE, "keys": [{"y": 0}, {"y": 6, "scale": 0.5}], "smooth": True}
+    with pytest.raises(CompileError, match="set style"):
+        build_with({"a": "minecraft:glass"}, {**cone, "mat": "$a"})  # no palette family, no override
+    with pytest.raises(CompileError, match="slot"):
+        build_with({}, {**cone, "mat": "minecraft:glass"})
+    with pytest.raises(CompileError, match="stairs are needed"):
+        build_with({"a": "minecraft:glass", "a.stairs": "minecraft:stone_slab"}, {**cone, "mat": "$a"})
+
+
+def test_mullions_and_lights():
+    style = {"a": "minecraft:glass", "b": "minecraft:quartz_block", "m": "minecraft:iron_block",
+             "l": "minecraft:glowstone"}  # fmt: skip
+    cells = cells_of(build_with(style, {"op": "loft", "id": "l", "profile": CIRCLE, "keys": [{"y": 0}, {"y": 8}],
+                                        "fill": "shell", "mat": "$a", "floor_every": 4, "floor_mat": "$b",
+                                        "mullions": {"count": 4, "mat": "$m"},
+                                        "lights": {"every": 4, "mat": "$l"}}))  # fmt: skip
+    ribs = {(x, z) for (x, y, z), b in cells.items() if b == "minecraft:iron_block" and y == 2}
+    assert ribs == {(7, -1), (7, 0), (-8, -1), (-8, 0), (-1, 7), (0, 7), (-1, -8), (0, -8)}  # E, W, S, N
+    assert not any(b == "minecraft:iron_block" for (_, y, _), b in cells.items() if y % 4 == 0)  # not in floors
+    lights = {(x, y, z) for (x, y, z), b in cells.items() if b == "minecraft:glowstone"}
+    assert {y for _, y, _ in lights} == {0, 4, 8}
+    assert all(x % 4 == 0 and z % 4 == 0 and abs(x + 0.5) < 7 and abs(z + 0.5) < 7 for x, _, z in lights)
+    assert len(lights) == 3 * 9  # x, z in {-4, 0, 4}
+
+
+def test_mullions_turn_with_the_keys():
+    style = {"a": "minecraft:glass", "m": "minecraft:iron_block"}
+    cells = cells_of(build_with(style, {"op": "loft", "id": "l", "profile": CIRCLE, "fill": "shell", "mat": "$a",
+                                        "keys": [{"y": 0}, {"y": 10, "rotate": 45}], "interp": "linear",
+                                        "mullions": {"count": 4, "mat": "$m"}}))  # fmt: skip
+    top = [(x + 0.5, z + 0.5) for (x, y, z), b in cells.items() if b == "minecraft:iron_block" and y == 10]
+    assert top and all(abs(abs(math.degrees(math.atan2(z, x))) % 90 - 45) < 10 for x, z in top)  # diagonals
+
+
+@pytest.mark.parametrize(("radius", "turn"), [(1, "ccw"), (2, "cw")])
+def test_spiral_stair_is_walkable_and_opens_the_floors(radius, turn):
+    style = {"f": "minecraft:planks", "f.stairs": "minecraft:oak_stairs", "c": "minecraft:log"}
+    cells = cells_of(build_with(style,
+                                {"op": "floors", "id": "fl", "footprint": {"x0": -5, "z0": -5, "x1": 5, "z1": 5},
+                                 "ys": [0, 4, 8, 12], "mat": "$f"},
+                                {"op": "spiral_stair", "id": "s", "center": [0, 0], "y0": 1, "y1": 12,
+                                 "radius": radius, "turn": turn, "mat": "$f.stairs", "column": "$c"}))  # fmt: skip
+    steps = sorted(((y, x, z), b) for (x, y, z), b in cells.items() if "stairs" in b)
+    assert [y for (y, _, _), _ in steps] == list(range(1, 13))  # one stair per level
+    for ((y, x, z), b), ((_, nx, nz), _) in zip(steps, steps[1:], strict=False):
+        meta = int(b.split("@")[1]) if "@" in b else 0
+        assert (nx - x, nz - z) == STEP[ASCEND[meta]]  # each stair rises toward the next one
+        assert (x, y + 1, z) not in cells and (x, y + 2, z) not in cells  # headroom
+    ring = {(x, z) for (_, x, z), _ in steps}
+    for fy in (4, 8, 12):
+        opened = [(x, z) for x, z in ring if (x, fy, z) in cells and "stairs" not in cells[(x, fy, z)]]
+        assert opened == []  # the floor is cleared around the stair
+    (y0, x0, z0), _ = steps[0]
+    (_, x1, z1), _ = steps[1]
+    cross = (x0 * z1 - z0 * x1)  # z points south, so a clockwise turn seen from above is positive
+    assert (cross > 0) is (turn == "cw")
+    assert cells[(0, 5, 0)] == "minecraft:log"  # the central column

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from img2schem.engine.materials import MaterialError, Resolver
+from img2schem.engine.materials import Material, MaterialError, Resolver
 from img2schem.engine.ops import (
     Beam,
     Box,
@@ -24,6 +24,7 @@ from img2schem.engine.ops import (
     OpsDoc,
     Roof,
     SetBlock,
+    SpiralStair,
     Sweep,
     TrimBand,
     Walls,
@@ -31,7 +32,7 @@ from img2schem.engine.ops import (
 )
 from img2schem.engine.roof import roof_cells
 from img2schem.engine.shapes import loft_cells, sweep_cells
-from img2schem.engine.states import door_metas, log_meta
+from img2schem.engine.states import Direction, door_metas, log_meta, stairs_meta
 from img2schem.models import AIR, BlockGrid
 from img2schem.palette.query import PaletteIndex
 from img2schem.util.block import format_block
@@ -119,6 +120,56 @@ def _window(op: Window, res: Resolver) -> list[Cell]:
     return cells
 
 
+def _stairs(res: Resolver, mat: str) -> Material:
+    m = res(mat)
+    if m.shape not in ("stairs", "unknown"):
+        raise MaterialError(f"{mat} is {m.block}, a {m.shape}; stairs are needed here")
+    return m
+
+
+def _loft(op: Loft, res: Resolver) -> list[Cell]:
+    lc = loft_cells(op)
+    wall_b = res(op.mat).block
+    floor_b = res(op.floor_mat).block if op.floor_mat else wall_b
+    cells = [(x, y, z, wall_b, WALL) for x, y, z in lc.walls] + [(x, y, z, floor_b, FLOOR) for x, y, z in lc.floors]
+    if op.mullions:
+        b = res(op.mullions.mat).block
+        cells += [(x, y, z, b, TRIM) for x, y, z in lc.mullions]
+    if op.lights:
+        b = res(op.lights.mat).block
+        cells += [(x, y, z, b, OTHER) for x, y, z in lc.lights]
+    if lc.steps:
+        if not op.mat.startswith("$"):
+            raise MaterialError(f"smooth needs mat to be a slot (e.g. $wall) to find its stairs, not {op.mat}")
+        st = _stairs(res, f"{op.mat}.stairs")
+        cells += [(x, y, z, format_block(st.name, stairs_meta(st.meta, d, down)), WALL)
+                  for (x, y, z), (d, down) in lc.steps.items()]  # fmt: skip
+    return cells
+
+
+def _spiral_stair(op: SpiralStair, res: Resolver) -> list[Cell]:
+    r, (cx, cz) = op.radius, op.center
+    ring = ([(u, -r) for u in range(-r, r)] + [(r, v) for v in range(-r, r)]
+            + [(u, r) for u in range(r, -r, -1)] + [(-r, v) for v in range(r, -r, -1)])  # fmt: skip
+    if op.turn == "ccw":  # seen from above (north up, east right) the list above runs clockwise
+        ring.reverse()
+    st = _stairs(res, op.mat)
+    col = _oriented(res, op.column, "y")
+    names: dict[tuple[int, int], Direction] = {(1, 0): "east", (-1, 0): "west", (0, 1): "south", (0, -1): "north"}
+    steps = {}
+    for k, y in enumerate(range(op.y0, op.y1 + 1)):
+        (u, v), (nu, nv) = ring[k % len(ring)], ring[(k + 1) % len(ring)]
+        steps[(cx + u, y, cz + v)] = format_block(st.name, stairs_meta(st.meta, names[(nu - u, nv - v)]))
+    cells: list[Cell] = []
+    for y in range(op.y0, op.y1 + 3):
+        for u, v in ring:
+            c = (cx + u, y, cz + v)
+            cells.append((*c, steps[c], OTHER) if c in steps else (*c, AIR, AIR_L))
+        if y <= op.y1:
+            cells += [(cx + u, y, cz + v, col, TRIM) for u in range(1 - r, r) for v in range(1 - r, r)]
+    return cells
+
+
 def rasterize(op: Op, res: Resolver) -> list[Cell]:
     if isinstance(op, Box):
         b = res(op.mat).block
@@ -164,10 +215,9 @@ def rasterize(op: Op, res: Resolver) -> list[Cell]:
             (x, op.y, z, b, TRIM) for x, _, z in _box((x0, op.y, z0), (x1, op.y, z1)) if x in (x0, x1) or z in (z0, z1)
         ]
     if isinstance(op, Loft):
-        walls, floors = loft_cells(op)
-        wall_b = res(op.mat).block
-        floor_b = res(op.floor_mat).block if op.floor_mat else wall_b
-        return [(x, y, z, wall_b, WALL) for x, y, z in walls] + [(x, y, z, floor_b, FLOOR) for x, y, z in floors]
+        return _loft(op, res)
+    if isinstance(op, SpiralStair):
+        return _spiral_stair(op, res)
     if isinstance(op, Sweep):
         b = res(op.mat).block
         return [(x, y, z, b, OTHER) for x, y, z in sweep_cells(op)]

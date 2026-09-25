@@ -46,6 +46,23 @@ Definition of Done (owner) — **all passed 2026-09-23; Phase 0 closed** (docs/T
       names resolved
 - [x] Previews match the in-game paste orientation
 
+## Owner requirements added during Phase 1 (2026-09-25)
+
+**G1 — Builds are usable in the world**, not only good to look at: every floor is reachable (stairs between
+levels, doors onto terraces and balconies), interiors are lit so mobs don't spawn inside, and drops have
+railings. Engine support so far: `spiral_stair`, loft `lights` (D-027). The validator's door-reachability check
+(R10.11) and a dark-interior check are follow-ups.
+
+**G2 — The Phase 3 UI** (adds to SOW §6.9; everything there still applies):
+- G2.1 Start a build from a **prompt, a photo, or both**. The designer is not limited to the house template:
+  a prompt like "a futuristic crescent tower" is built directly in ops (loft, sweep, …).
+- G2.2 **Continuously refine** a project: prompt-based revisions ("make the blades taller", "add a terrace at
+  level 40") change the current ops. Every revision is saved as a new ops version on disk, with undo/redo across
+  versions.
+- G2.3 A **plain-text editor for `ops.json`** in the GUI, checked against the ops schema, that recompiles on
+  save. Chat revisions and hand edits work on the same document.
+- G2.4 A **preview** of every version: the 3D viewport of §6.9 plus the PNG previews.
+
 ## Open questions
 
 - **Q1 — Where do colors, metadata meanings and shapes come from?** *Decided for Phase 1: (a) NEI dumps,

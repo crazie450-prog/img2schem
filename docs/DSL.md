@@ -59,8 +59,9 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `trim_band` | `footprint`, `y`, `mat` (`$trim`), `outset` | 1-block ring (belt course, cornice) |
 | `carve` | `from`, `to` | sets a box to air |
 | `set` | `cells`, `block` | escape hatch: ≤ 64 cells per op, ≤ 256 per build |
-| `loft` | `profile`, `keys`, `pivot`, `interp`, `fill`, `thickness`, `mat`, `floor_every`, `floor_mat`, `caps` | a curved horizontal profile carried up through keys; see below |
+| `loft` | `profile`, `keys`, `pivot`, `interp`, `fill`, `thickness`, `mat`, `floor_every`, `floor_mat`, `caps`, `smooth`, `mullions`, `lights` | a curved horizontal profile carried up through keys; see below |
 | `sweep` | `points` (x, y, z), `radius`, `interp`, `mat` | a round tube along a curve (ribs, arches) |
+| `spiral_stair` | `center` (x, z), `y0`, `y1`, `radius` (1–3), `turn` (cw/ccw), `mat` (stairs), `column` | one stair per level around a central column; clears its shaft through the floors; see below |
 
 ### Roofs
 
@@ -102,7 +103,27 @@ One pair of equal keys is a straight extrusion; shrinking `scale` tapers, changi
  "fill": "shell", "mat": "$glass", "floor_every": 4, "floor_mat": "$floor", "caps": true}
 ```
 
+Detail options:
+
+- `smooth: true` turns every step of the outer surface (where it moves in or out by a block between levels)
+  into a stair of `<mat>.stairs` rising toward the wall, upside-down under an overhang. Tapers and leans then
+  read as slopes, and mobs can't spawn on the ledges. `mat` must be a slot (`$blade`) whose block has stairs
+  (from the palette family or `style["blade.stairs"]`); glass has none, so leave glass unsmoothed.
+- `mullions: {"count": 12, "mat": "$metal"}`: vertical ribs at equal angles around the pivot, one block wide,
+  twisting with the keys' `rotate`. They converge as a loft tapers, so pick the count for the narrowest level.
+- `lights: {"every": 4, "mat": "$light"}`: light blocks set into every floor layer (a solid loft: its top
+  layer) where x and z are multiples of `every`, never in the outermost ring. `every` 4 keeps a 3-high storey
+  lit above light 7 (no mob spawns); 5 or 6 suits open plazas.
+
 `sweep` places balls of `radius` along a curve through `points`; the curve passes through every point.
+
+### Spiral stairs
+
+`spiral_stair` climbs one level per block around the ring of a (2 × `radius` + 1) square centered on
+`center`, around a `column` filling the inside: radius 1 is the classic 3 × 3 with 7 blocks of headroom. The
+first stair sits at `y0` (on the floor below it) and the last at `y1`; set `y1` to a floor level to step off
+there. Every other ring cell from `y0` to `y1 + 2` is cleared, which opens the floors it passes through, so
+place it after the floors. On each floor, step on where the stair reaches the floor's level.
 
 Builds may be up to 256 tall (the top of a 1.7.10 world); larger footprints only warn. Full example:
 `examples/tower.ops.json`.
