@@ -12,27 +12,33 @@ import numpy as np
 
 from img2schem.engine.materials import Material, MaterialError, Resolver
 from img2schem.engine.ops import (
+    Array,
     Beam,
     Box,
     Carve,
     Column,
+    Define,
     Door,
     Floors,
     Loft,
+    Mirror,
     Op,
     Openings,
     OpsDoc,
+    Place,
+    Railing,
     Roof,
     SetBlock,
     SpiralStair,
     Sweep,
     TrimBand,
+    Vary,
     Walls,
     Window,
 )
 from img2schem.engine.roof import roof_cells
 from img2schem.engine.shapes import DIRS, loft_cells, sweep_cells
-from img2schem.engine.states import Direction, door_metas, log_meta, stairs_meta
+from img2schem.engine.states import Direction, door_metas, log_meta, stairs_meta, transform_meta
 from img2schem.models import AIR, BlockGrid
 from img2schem.palette.query import PaletteIndex
 from img2schem.util.block import format_block
@@ -263,6 +269,8 @@ def _cells(op: Op, res: Resolver) -> list[Cell] | Raster:
         return _spiral_stair(op, res)
     if isinstance(op, Carve):
         return Raster.uniform(_box_cells(op.from_, op.to), AIR, AIR_L)
+    if isinstance(op, Railing):
+        return _railing(op, res)
     if isinstance(op, SetBlock):
         b = res(op.block).block
         return [(x, y, z, b, OTHER) for x, y, z in op.cells]
@@ -276,35 +284,114 @@ def _last(pos: np.ndarray, first: bool) -> np.ndarray:
     return np.sort(order[keep])
 
 
-def compile_ops(doc: OpsDoc, index: PaletteIndex | None = None, hard_max_total: int = 2_000_000) -> Compiled:
-    res = Resolver(doc.style, index)
-    rasters: list[Raster] = []
-    for op in doc.ops:
+def _railing(op: Railing, res: Resolver) -> Raster:
+    pts = [*op.path, op.path[0]] if op.closed else op.path
+    cells = [pts[0]]
+    for (x1, z1) in pts[1:]:
+        x, z = cells[-1]
+        while (x, z) != (x1, z1):  # step along the longer remaining axis: 4-connected
+            if abs(x1 - x) >= abs(z1 - z):
+                x += 1 if x1 > x else -1
+            else:
+                z += 1 if z1 > z else -1
+            cells.append((x, z))
+    pos = np.array([(x, op.y, z) for x, z in dict.fromkeys(cells)], np.int64)
+    return Raster.uniform(pos, res(op.mat).block, TRIM)
+
+
+def _transformed(r: Raster, res: Resolver, turns: int, mirror: str | None) -> Raster:
+    """``r`` mirrored (negating x or z) then turned clockwise about the origin, with block states to match."""
+    x, y, z = r.pos[:, 0].copy(), r.pos[:, 1], r.pos[:, 2].copy()
+    if mirror == "x":
+        x = -x
+    elif mirror == "z":
+        z = -z
+    for _ in range(turns % 4):
+        x, z = -z, x
+    blocks = []
+    for b in r.blocks:
+        if b == AIR:
+            blocks.append(b)
+            continue
+        m = res(b)
+        blocks.append(format_block(m.name, transform_meta(m.shape, m.meta, turns, mirror)))
+    return Raster(np.column_stack([x, y, z]), blocks, r.block_ids, r.labels)
+
+
+def _place(op: Place | Array, res: Resolver, defs: dict[str, Raster]) -> Raster:
+    if op.name not in defs:
+        raise ValueError(f"no component {op.name!r} defined before this op")
+    base = _transformed(defs[op.name], res, op.rotate // 90, op.mirror)
+    count, step = (op.count, np.array(op.step)) if isinstance(op, Array) else (1, np.zeros(3, np.int64))
+    copies = [Raster(base.pos + np.array(op.pos) + k * step, base.blocks, base.block_ids, base.labels)
+              for k in range(count)]  # fmt: skip
+    return Raster.concat(copies)
+
+
+def _mirror(op: Mirror, res: Resolver, earlier: list[tuple[Op, Raster | None]]) -> Raster:
+    src = [r for o, r in earlier if r is not None and (o.id in op.ops or (o.group and o.group in op.ops))]
+    if not src:
+        raise ValueError(f"no earlier op or group named {', '.join(op.ops)}")
+    m = _transformed(Raster.concat(src), res, 0, op.axis)
+    shift = int(2 * op.plane) - 1  # the cell at c maps to 2 * plane - c - 1
+    m.pos[:, 0 if op.axis == "x" else 2] += shift
+    return m
+
+
+def _rasters(ops: list[Op], res: Resolver, defs: dict[str, Raster]) -> list[Raster | None]:
+    """Every op's cells; None for ``define`` and ``vary`` (which acts on the grid while applying)."""
+    out: list[Raster | None] = []
+    for op in ops:
         try:
-            rasters.append(rasterize(op, res))
+            if isinstance(op, Define):
+                defs[op.name] = _component(op, res, defs)
+                out.append(None)
+            elif isinstance(op, Vary):
+                out.append(None)
+            elif isinstance(op, Place | Array):
+                out.append(_place(op, res, defs))
+            elif isinstance(op, Mirror):
+                out.append(_mirror(op, res, list(zip(ops, out, strict=False))))
+            else:
+                out.append(rasterize(op, res))
         except (MaterialError, ValueError) as e:
             raise CompileError(op.id, str(e)) from None
+    return out
 
-    palette = [AIR] + list(dict.fromkeys(b for r in rasters for b in r.blocks if b != AIR))
+
+@dataclass
+class _Grid:
+    idx: np.ndarray
+    labels: np.ndarray
+    op_index: np.ndarray
+    lo: np.ndarray  # design coordinate of cell [0, 0, 0]
+    palette: list[str]
+
+
+def _apply(ops: list[Op], rasters: list[Raster | None], res: Resolver, hard_max_total: int,
+           summaries: list[OpSummary]) -> _Grid | None:  # fmt: skip
+    """Apply the rasters in order to dense grids sized to all solid cells (None if there are none)."""
+    extra = [res(op.mat).block for op in ops if isinstance(op, Vary)]
+    palette = [AIR] + list(dict.fromkeys([*(b for r in rasters if r for b in r.blocks if b != AIR), *extra]))
     gid = {b: i for i, b in enumerate(palette)}
-    solid = [r.pos[np.array([b != AIR for b in r.blocks], bool)[r.block_ids]] for r in rasters]
+    solid = [r.pos[np.array([b != AIR for b in r.blocks], bool)[r.block_ids]] for r in rasters if r]
     solid = [p for p in solid if len(p)]
-    summaries = [OpSummary(op.id, op.label) for op in doc.ops]
     if not solid:
-        return Compiled(BlockGrid.empty(1, 1, 1), np.zeros((1, 1, 1), np.uint8), np.full((1, 1, 1), -1, np.int16),
-                        (0, 0, 0), summaries)  # fmt: skip
+        return None
     lo = np.min([p.min(axis=0) for p in solid], axis=0)
     hi = np.max([p.max(axis=0) for p in solid], axis=0)
     dims = hi - lo + 1
     total = int(np.prod(dims))
     if total > hard_max_total:  # RE.7: check before allocating
         raise CompileError("*", f"bounding box {tuple(int(d) for d in dims)} = {total} cells exceeds {hard_max_total}")
-    idx = np.zeros(tuple(int(d) for d in dims), np.int32)
-    labels = np.zeros(idx.shape, np.uint8)
-    op_index = np.full(idx.shape, -1, np.int16)
+    g = _Grid(np.zeros(tuple(int(d) for d in dims), np.int32), np.zeros(tuple(int(d) for d in dims), np.uint8),
+              np.full(tuple(int(d) for d in dims), -1, np.int16), lo, palette)  # fmt: skip
 
-    for i, (op, r, s) in enumerate(zip(doc.ops, rasters, summaries, strict=True)):
-        if not len(r.pos):
+    for i, (op, r, s) in enumerate(zip(ops, rasters, summaries, strict=True)):
+        if isinstance(op, Vary):
+            _vary(op, i, ops, g, gid, res, s)
+            continue
+        if r is None or not len(r.pos):
             continue
         s.bounds = (tuple(int(v) for v in r.pos.min(axis=0)), tuple(int(v) for v in r.pos.max(axis=0)))  # type: ignore[assignment]
         pick = _last(r.pos, first=op.mode == "keep")
@@ -312,21 +399,57 @@ def compile_ops(doc: OpsDoc, index: PaletteIndex | None = None, hard_max_total: 
         inside = ((p >= 0) & (p < dims)).all(axis=1)  # only air (carves) can fall outside the solid bounds
         pick, p = pick[inside], p[inside]
         cell = (p[:, 0], p[:, 1], p[:, 2])
-        prev = idx[cell]
+        prev = g.idx[cell]
         if op.mode == "keep":
             pick, cell, prev = pick[prev == 0], tuple(a[prev == 0] for a in cell), prev[prev == 0]
-        g = np.array([gid[b] for b in r.blocks], np.int32)[r.block_ids[pick]]
+        ids = np.array([gid[b] for b in r.blocks], np.int32)[r.block_ids[pick]]
         s.cells, s.overwritten = len(pick), int((prev != 0).sum())
-        idx[cell], labels[cell], op_index[cell] = g, r.labels[pick], i
-        counts = np.bincount(g, minlength=len(palette))
+        g.idx[cell], g.labels[cell], g.op_index[cell] = ids, r.labels[pick], i
+        counts = np.bincount(ids, minlength=len(palette))
         s.blocks = {palette[j]: int(n) for j, n in enumerate(counts) if n}
+    return g
 
-    nz = np.argwhere(idx != 0)
+
+def _vary(op: Vary, i: int, ops: list[Op], g: _Grid, gid: dict[str, int], res: Resolver, s: OpSummary) -> None:
+    target = next((j for j in range(i) if ops[j].id == op.target), None)
+    if target is None:
+        raise CompileError(op.id, f"no earlier op {op.target!r}")
+    mat = getattr(ops[target], "mat", None)
+    if not isinstance(mat, str):
+        raise CompileError(op.id, f"op {op.target!r} has no single mat to vary")
+    primary = gid.get(res(mat).block)
+    cells = np.argwhere((g.op_index == target) & (g.idx == primary)) if primary else np.zeros((0, 3), np.int64)
+    chosen = cells[np.random.default_rng(op.seed).random(len(cells)) < op.ratio]
+    cell = (chosen[:, 0], chosen[:, 1], chosen[:, 2])
+    b = res(op.mat).block
+    g.idx[cell], g.op_index[cell] = gid[b], i
+    s.cells = s.overwritten = len(chosen)
+    s.blocks = {b: len(chosen)} if len(chosen) else {}
+
+
+def _component(op: Define, res: Resolver, defs: dict[str, Raster]) -> Raster:
+    summaries = [OpSummary(o.id, o.label) for o in op.ops]
+    g = _apply(op.ops, _rasters(op.ops, res, defs), res, 2**31 - 1, summaries)
+    if g is None:
+        return Raster.uniform(np.zeros((0, 3)), AIR, AIR_L)
+    nz = np.argwhere(g.idx != 0)
+    cell = (nz[:, 0], nz[:, 1], nz[:, 2])
+    return Raster(nz + g.lo, g.palette, g.idx[cell].astype(np.int64), g.labels[cell])
+
+
+def compile_ops(doc: OpsDoc, index: PaletteIndex | None = None, hard_max_total: int = 2_000_000) -> Compiled:
+    res = Resolver(doc.style, index)
+    summaries = [OpSummary(op.id, op.label) for op in doc.ops]
+    g = _apply(doc.ops, _rasters(doc.ops, res, {}), res, hard_max_total, summaries)
+    if g is None:
+        return Compiled(BlockGrid.empty(1, 1, 1), np.zeros((1, 1, 1), np.uint8), np.full((1, 1, 1), -1, np.int16),
+                        (0, 0, 0), summaries)  # fmt: skip
+    nz = np.argwhere(g.idx != 0)
     a, b = nz.min(axis=0), nz.max(axis=0) + 1  # carves can shrink the bounds
     crop = tuple(slice(int(u), int(v)) for u, v in zip(a, b, strict=True))
-    grid = BlockGrid(idx[crop].copy(), palette).compact()
-    origin = tuple(int(v) for v in -(lo + a))
-    return Compiled(grid, labels[crop].copy(), op_index[crop].copy(), origin, summaries)  # type: ignore[arg-type]
+    grid = BlockGrid(g.idx[crop].copy(), g.palette).compact()
+    origin = tuple(int(v) for v in -(g.lo + a))
+    return Compiled(grid, g.labels[crop].copy(), g.op_index[crop].copy(), origin, summaries)  # type: ignore[arg-type]
 
 
 def paste_offset(c: Compiled) -> tuple[int, int, int]:

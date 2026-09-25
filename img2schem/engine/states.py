@@ -41,3 +41,34 @@ def door_metas(facing: Direction, hinge_right: bool = False) -> tuple[int, int]:
 
 def log_meta(material: int, axis: Literal["x", "y", "z"]) -> int:
     return (material & 3) | LOG_AXIS[axis]
+
+
+TURN_CW: dict[Direction, Direction] = {"north": "east", "east": "south", "south": "west", "west": "north"}
+MIRROR: dict[str, dict[Direction, Direction]] = {
+    "x": {"east": "west", "west": "east", "north": "north", "south": "south"},
+    "z": {"north": "south", "south": "north", "east": "east", "west": "west"},
+}
+
+
+def _turn(d: Direction, turns: int, mirror: str | None) -> Direction:
+    if mirror:
+        d = MIRROR[mirror][d]
+    for _ in range(turns % 4):
+        d = TURN_CW[d]
+    return d
+
+
+def transform_meta(shape: str, meta: int, turns: int, mirror: str | None = None) -> int:
+    """Metadata of an oriented block after mirroring across ``mirror`` (x: east <-> west, z: north <-> south)
+    and then turning ``turns`` quarter turns clockwise seen from above (RE.5). Other blocks keep their meta."""
+    if shape == "stairs":
+        d = next(k for k, v in STAIRS_ASCEND.items() if v == meta & 3)
+        return (meta & ~3) | STAIRS_ASCEND[_turn(d, turns, mirror)]
+    if shape == "door":
+        if meta & 8:  # upper half: the hinge side flips in a mirror image
+            return meta ^ 1 if mirror else meta
+        d = next(k for k, v in DOOR_FACING.items() if v == meta & 3)
+        return (meta & ~3) | DOOR_FACING[_turn(d, turns, mirror)]
+    if shape == "log" and turns % 2 and meta & 12 in (4, 8):
+        return meta ^ 12  # x axis <-> z axis
+    return meta

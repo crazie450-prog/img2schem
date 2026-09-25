@@ -259,6 +259,87 @@ class SpiralStair(OpBase):
         return self
 
 
+class Railing(OpBase):
+    """A 1-block line at height ``y`` along ``path`` [(x, z), ...] (``closed``: back to the start), stepped so
+    consecutive blocks share a face: panes, fences and walls connect only to their four sides. ``mat`` is usually
+    a family member (``$trim.fence``, ``$wall.wall``) or a pane."""
+
+    op: Literal["railing"] = "railing"
+    path: list[tuple[int, int]] = Field(min_length=2)
+    y: int
+    mat: str
+    closed: bool = False
+
+
+class Vary(OpBase):
+    """Seeded variation (RM.4): about ``ratio`` of the blocks that op ``target`` placed with its own ``mat`` and
+    that are still standing become ``mat`` here. Stairs, slabs and other derived blocks are left alone."""
+
+    op: Literal["vary"] = "vary"
+    target: str
+    mat: str
+    ratio: float = Field(0.15, gt=0, lt=1)
+    seed: int = 0
+
+
+class Define(OpBase):
+    """A reusable component ``name`` built from ``ops`` in its own coordinates (usually around (0, 0, 0)).
+    It places nothing by itself; ``place`` and ``array`` put copies into the build. Only the component's final
+    blocks are copied: carves inside it don't cut into the build (carve where it is placed instead)."""
+
+    op: Literal["define"] = "define"
+    name: str
+    ops: list[Op] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _flat(self) -> Define:
+        if any(isinstance(o, Define) for o in self.ops):
+            raise ValueError("define can't contain another define (define components one after another)")
+        return self
+
+
+class Place(OpBase):
+    """A copy of component ``name`` with its origin at ``pos``: first mirrored (``x`` flips east/west, ``z``
+    flips north/south), then turned ``rotate`` degrees clockwise seen from above. Stairs, doors and logs are
+    re-oriented to match."""
+
+    op: Literal["place"] = "place"
+    name: str
+    pos: Vec3 = (0, 0, 0)
+    rotate: Literal[0, 90, 180, 270] = 0
+    mirror: Literal["x", "z"] | None = None
+
+
+class Array(OpBase):
+    """``count`` copies of component ``name``: the first at ``pos``, each next one moved by ``step``
+    (dx, dy, dz); ``rotate``/``mirror`` as in ``place``."""
+
+    op: Literal["array"] = "array"
+    name: str
+    pos: Vec3 = (0, 0, 0)
+    count: int = Field(ge=1)
+    step: Vec3
+    rotate: Literal[0, 90, 180, 270] = 0
+    mirror: Literal["x", "z"] | None = None
+
+
+class Mirror(OpBase):
+    """Copies what earlier ops placed (``ops``: op ids or group names) mirrored across the plane ``axis`` =
+    ``plane``: ``plane`` is a block coordinate, ``x = 6.5`` is the middle of block 6 (a 13-wide build 0..12),
+    ``x = 6`` the face between blocks 5 and 6. Stairs, doors and logs are mirrored too."""
+
+    op: Literal["mirror"] = "mirror"
+    ops: list[str] = Field(min_length=1)
+    axis: Literal["x", "z"]
+    plane: float
+
+    @model_validator(mode="after")
+    def _half(self) -> Mirror:
+        if (2 * self.plane) % 1:
+            raise ValueError("mirror plane must be a whole or half block coordinate")
+        return self
+
+
 class Roof(OpBase):
     """A roof over ``footprint`` whose lowest course sits at ``y0`` (usually the top of the walls + 1).
 
@@ -339,9 +420,17 @@ class SetBlock(OpBase):
 
 Op = Annotated[
     Box | Walls | Floors | Door | Openings | Window | Roof | Column | Beam | TrimBand | Carve | SetBlock | Loft | Sweep
-    | SpiralStair,
+    | SpiralStair | Railing | Vary | Define | Place | Array | Mirror,
     Field(discriminator="op"),
 ]
+
+
+def _walk(ops: list[Op]) -> list[Op]:
+    """Ops including those inside ``define``."""
+    return [x for o in ops for x in ([o, *o.ops] if isinstance(o, Define) else [o])]
+
+
+Define.model_rebuild()
 
 
 class OpsDoc(BaseModel):
@@ -358,7 +447,7 @@ class OpsDoc(BaseModel):
         ids = [o.id for o in self.ops]
         if len(ids) != len(set(ids)):
             raise ValueError("op ids must be unique")
-        n_set = sum(len(o.cells) for o in self.ops if isinstance(o, SetBlock))
+        n_set = sum(len(o.cells) for o in _walk(self.ops) if isinstance(o, SetBlock))
         if n_set > SET_CELLS_PER_BUILD:
             raise ValueError(f"'set' ops place {n_set} cells; the limit is {SET_CELLS_PER_BUILD} per build")
         return self

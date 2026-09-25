@@ -62,6 +62,12 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `loft` | `profile`, `keys`, `pivot`, `interp`, `fill`, `thickness`, `mat`, `floor_every`, `floor_mat`, `caps`, `smooth`, `mullions`, `lights` | a curved horizontal profile carried up through keys; see below |
 | `sweep` | `points` (x, y, z), `radius`, `interp`, `mat` | a round tube along a curve (ribs, arches) |
 | `spiral_stair` | `center` (x, z), `y0`, `y1`, `radius` (1–3), `turn` (cw/ccw), `mat` (stairs), `column` | one stair per level around a central column; clears its shaft through the floors; see below |
+| `railing` | `path` ([x, z] points), `y`, `mat`, `closed` | a 1-block line stepped so each block touches the next on a face (panes, fences and walls only connect sideways) |
+| `vary` | `target` (op id), `mat`, `ratio` (0.15), `seed` | swaps about `ratio` of the blocks `target` placed with its own `mat` (not its stairs etc.) for `mat`; the same seed gives the same result |
+| `define` | `name`, `ops` | a reusable component in its own coordinates; places nothing by itself |
+| `place` | `name`, `pos`, `rotate` (0/90/180/270), `mirror` (x/z) | a copy of a component; see below |
+| `array` | `name`, `pos`, `count`, `step` [dx, dy, dz], `rotate`, `mirror` | `count` copies, each moved by `step` |
+| `mirror` | `ops` (op ids or group names), `axis` (x/z), `plane` | copies what those earlier ops placed across a plane |
 
 ### Roofs
 
@@ -128,8 +134,22 @@ place it after the floors. On each floor, step on where the stair reaches the fl
 Builds may be up to 256 tall (the top of a 1.7.10 world); larger footprints only warn. Full example:
 `examples/tower.ops.json`.
 
+### Components, arrays and mirrors
+
+`define` builds a component from its `ops` in its own coordinates (put its origin at a useful corner or at its
+center). `place` and `array` copy it: first mirrored (`x` flips east and west, `z` north and south), then turned
+`rotate` degrees clockwise seen from above ((x, z) → (−z, x) per quarter turn), then moved to `pos`. Stairs,
+doors (facing and hinge) and logs are re-oriented to match. Only the component's final blocks are copied; a
+carve inside a component doesn't cut into the build, so carve where you place it.
+
+`mirror` copies what the named earlier ops placed (as they placed it, before later ops) across the plane
+`axis = plane`. `plane` is a block coordinate: `6.5` is the middle of block 6 (block 6 maps to itself: a
+13-wide build 0..12 is symmetric about it), `6` the face between blocks 5 and 6. Example:
+`examples/courtyard.ops.json` places one kiosk four ways (three `place`s and a `mirror`), all doors facing the
+center.
+
 ## Not implemented yet
 
-From SOW §6.5: `railing`, `vary`, `define`/`place`, `array`, `mirror`, and polygon footprints for the
-rectangular ops (use `loft` for curved or polygonal plans). `facade_from_spec` is replaced by the template
-generator writing one `window` op per measured window (D-021), so `ops.json` never depends on `spec.json`.
+Polygon footprints for the rectangular ops (use `loft` for curved or polygonal plans). `facade_from_spec` is
+replaced by the template generator writing one `window` op per measured window (D-021), so `ops.json` never
+depends on `spec.json`.

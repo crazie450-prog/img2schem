@@ -60,3 +60,4 @@ should be resolved (not `id:<n>`) and the counts should match.
 | 1-storey variant keeps both door halves | ✅ after D-023 (a window had replaced the door's upper half) |
 | `examples/tower.ops.json` (loft/sweep curves, 109 tall, ~26k blocks) | ✅ pasted correctly; a basis to refine for usability and detail (D-026) |
 | Tower detail pass (D-027): smoothed blades, mullions, lights, spiral stair to the roof, terrace doors facing east | ⏳ to check in game: stair directions on the blades, walking up the spiral, terrace doors open outward and stay on, no mobs inside at night |
+| `examples/courtyard.ops.json` (D-029): one kiosk placed four ways, mirrored doors, varied paving, fence | ⏳ to check in game: each door faces the center and opens, roofs intact, mossy bricks scattered, gap in the north fence |

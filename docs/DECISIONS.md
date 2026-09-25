@@ -323,3 +323,21 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   200 ms target); a 241 × 251 × 241 test build of 535k blocks compiles in 1.8 s. The palette is now ordered
   by first use in op order, so the golden grid was regenerated (same blocks by name).
 - **Still to do from RE.8:** incremental recompiles (Phase 3 UI).
+
+### D-029 Components, mirrors, variation and railings (the rest of SOW §6.5)
+- **`define` / `place` / `array`:** a component is compiled with the same apply pass as a build, and its final
+  non-air blocks become a reusable raster. Carves inside a component only shape the component (it has no build
+  underneath yet); a component that needs an opening in the build is placed after a `carve`. `define` can't
+  nest, but components can `place` earlier components.
+- **`mirror`** copies the rasters of the named earlier ops (what they placed, not what survived later ops):
+  "copy the west half" should not depend on what was added on top afterwards. The plane is a whole or half
+  block coordinate; cell c maps to 2 × plane − c − 1.
+- **State transforms (RE.5)** are a table in `states.py`: stairs and lower door halves turn/mirror their
+  direction, an upper door half flips its hinge under a mirror, logs swap the x/z axis on a quarter turn.
+  Property-tested (four quarter turns and two mirrors are the identity; x-mirror + 180° = z-mirror) for every
+  meta.
+- **`vary`** acts on the grid while applying: it only swaps blocks that the target op placed with its own
+  `mat` and that are still there, chosen with a seeded RNG (numpy default_rng) over those cells in grid order.
+  Random choice doesn't form checkerboards, so no extra rule is needed.
+- **`railing`** steps along the longer remaining axis, so consecutive blocks always share a face.
+- **In-game check pending:** doors facing east, south and west (`examples/courtyard.ops.json`).
