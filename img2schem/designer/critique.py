@@ -19,7 +19,9 @@ PANEL_H = 520
 CRITIQUE_PROMPT = (
     "Critique pass {n} of {total}. Left: the owner's photo. Right: your build as it stands (iso view from the "
     "north-west, and the front elevation seen from the north; flat preview colors, not textures). List the top "
-    "discrepancies in massing, proportions, roof, openings and materials, ranked. Fix the ones that matter with "
+    "discrepancies in massing, proportions, roof, openings and materials, ranked; first check that nothing is "
+    "mirrored (the front view is drawn as the photo's viewer sees it: its left is east, larger x). Fix the ones "
+    "that matter with "
     "ops (replace_op the op that makes a part rather than covering it), then call finish with an updated "
     "summary. If what remains is cosmetic, call finish right away."
 )
@@ -46,7 +48,10 @@ def photo_brief(photos: list[Path], notes: str) -> list[dict[str, Any]]:
         + "First say what you see, briefly: footprint width and depth, storeys and heights, the main volumes and "
         "how they step or cantilever, the roof, the openings on the front, and the materials and colors per "
         "role. Then build it: massing and proportions first, then openings, then materials and detail (trims, "
-        "frames, recesses). Put the side facing the camera at z = 0 (the front, facing north). Design plausible "
+        "frames, recesses). Put the side facing the camera at z = 0 (the front, facing north). Mind the "
+        "handedness: the camera stands north of the front looking south, so the photo's LEFT is EAST (larger "
+        "x) and its RIGHT is WEST (smaller x); a garage on the photo's left goes at the high-x end. Design "
+        "plausible "
         "sides and back where the photo doesn't show them. Leave out plants, cars and people unless the notes "
         "ask for them; hardscape such as a driveway or terrace is fine. Check it with render_views, then call "
         "finish."
@@ -74,7 +79,7 @@ def critique_sheet(photo: Path, grid: BlockGrid, palette: Palette | None) -> Ima
     iso, front = render_iso(grid, 8, palette), render_front(grid, 8, palette)
     panels = [_label(_fit(Image.open(photo), PANEL_H), "photo"),
               _label(_fit(iso, PANEL_H, True), "your build: iso (from the north-west)"),
-              _label(_fit(front, PANEL_H, True), "your build: front (from the north)")]  # fmt: skip
+              _label(_fit(front, PANEL_H, True), "your build: front (from the north; left = east, +x)")]  # fmt: skip
     sheet = Image.new("RGB", (sum(p.width for p in panels) + 16 * (len(panels) - 1), panels[0].height), BG)
     x = 0
     for p in panels:

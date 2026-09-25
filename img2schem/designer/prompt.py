@@ -9,7 +9,7 @@ from img2schem.models import Palette
 from img2schem.palette.query import PaletteIndex
 from img2schem.util.color import hex_color
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: handedness rule for photos (D-035)
 DSL = Path(__file__).parents[2] / "docs" / "DSL.md"  # the ops reference doubles as Claude's (CLAUDE.md)
 
 

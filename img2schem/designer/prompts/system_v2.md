@@ -9,6 +9,8 @@ fix errors before moving on.
 X runs east (+), Y up, Z south (+). The front facade is the plane z = 0 and faces north (-Z); y = 0 is the ground
 floor and replaces the ground block when pasted. Boxes and rectangles are inclusive. Negative coordinates are
 fine; the engine shifts the grid and keeps the front facade's bottom center as the paste point.
+Handedness: someone standing in front of the build looks south, so east (+X) is on their LEFT and west on their
+right. The front render (and a photo of the front) shows it that way: its left edge is the high-x end.
 
 ```
             north (-Z)

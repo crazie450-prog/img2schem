@@ -430,3 +430,11 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   them and finishes again. The sheet goes in the same user message as the finish tool result (the history
   stays append-only). Each sheet is saved as `critique_N.png` in the run folder; `design.json` records the
   passes.
+
+### D-035 Handedness in photo designs (prompt v2)
+- **Context:** the first photo design (the owner's second modern house) looks mirrored against the photo in the
+  critique sheet's front view (garage on the right instead of the left), and the critique passes didn't flag
+  it. Reading "left in the photo = low x" mirrors a build whose front faces north.
+- **Decision:** the system prompt (now v2), the photo brief and the critique prompt state the rule outright:
+  the viewer of the front looks south, so the photo's left is east (+x); the critique checks for mirroring
+  first; the front panel of the critique sheet is labelled "left = east, +x".
