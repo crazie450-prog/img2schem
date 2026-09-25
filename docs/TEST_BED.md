@@ -58,3 +58,4 @@ should be resolved (not `id:<n>`) and the counts should match.
 | `examples/brick_house.spec.json` via `compile SPEC.json` | ✅ after D-022 (flush windows; rebuilds replace img2schem's own file) |
 | Spec edits (storeys, roof type) take effect on recompile | ✅ after D-022 |
 | 1-storey variant keeps both door halves | ✅ after D-023 (a window had replaced the door's upper half) |
+| `examples/tower.ops.json` (loft/sweep curves, 109 tall, ~26k blocks) | ✅ pasted correctly; a basis to refine for usability and detail (D-026) |
