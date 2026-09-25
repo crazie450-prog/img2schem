@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from fixtures.designer import synthetic
@@ -212,3 +213,27 @@ def test_live_transport_sends_the_workspace_header(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID")
     assert "anthropic-workspace-id" not in LiveTransport().client.default_headers
 
+
+
+LIVE = Path(__file__).parents[1] / "fixtures" / "designer" / "watchtower_live.session.jsonl"
+
+
+@pytest.mark.replay
+def test_replay_of_the_owners_first_live_session():
+    """A real Opus 5.5 session (the owner's watchtower, 2026-09-25). With the owner's palette it rebuilds the
+    same 776-block tower; without one (CI) the two ops that need palette families are rejected and reported."""
+    import os
+
+    from img2schem.models import Palette
+
+    pal_path = os.environ.get("IMG2SCHEM_TEST_PALETTE")
+    pal = Palette.model_validate_json(Path(pal_path).read_text(encoding="utf-8")) if pal_path else None
+    state = DesignState(OpsDoc(), pal, Budgets())
+    r = run_design(state, "x", "S", tool_specs(), SETTINGS, BUDGET, ReplayTransport(LIVE))
+    assert (r.stopped, r.turns) == ("finished", 5) and r.cost_usd == pytest.approx(0.3313, abs=1e-4)
+    assert r.summary.startswith("I built a small stone-brick watchtower")
+    assert r.usage[1]["cache_read_input_tokens"] == 30354  # the prompt prefix was read from the cache
+    if pal is None:
+        assert "rail" not in [o.id for o in state.doc.ops] and len(state.doc.ops) == 18
+    else:
+        assert len(state.doc.ops) == 20 and state.compiled.grid.nonair() == 776
