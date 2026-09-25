@@ -613,9 +613,29 @@ def history(build: str = typer.Argument(..., help="Build name or ops.json path."
     console.print(f"total API cost: ${total:.2f}")
 
 
+def _port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _free_port(start: int) -> int:
+    for port in range(start, start + 20):
+        if _port_free(port):
+            if port != start:
+                console.print(f"port {start} is in use; using {port}")
+            return port
+    raise _fail(f"no free port in {start}..{start + 19}; pass --port")
+
+
 @app.command()
 def serve(
-    port: int = typer.Option(8765, "--port"),
+    port: int | None = typer.Option(None, "--port", help="Port (default: 8765, or the next free one)."),
     open_browser: bool = typer.Option(False, "--open", help="Open the UI in your browser."),
 ) -> None:
     """The local web UI (Phase 3): design, edit and preview builds in the browser. Local only."""
@@ -625,6 +645,11 @@ def serve(
         from img2schem.server.app import create_app
     except ImportError:
         raise _fail('the web UI needs its server packages: pip install -e ".[vlm,server]"') from None
+    if port is None:
+        port = _free_port(8765)
+    elif not _port_free(port):
+        raise _fail(f"port {port} is in use (another program, or img2schem serve already running): "
+                    "leave out --port to pick a free one")  # fmt: skip
     url = f"http://127.0.0.1:{port}"
     console.print(f"img2schem UI: {url}   (Ctrl+C stops it)")
     if open_browser:

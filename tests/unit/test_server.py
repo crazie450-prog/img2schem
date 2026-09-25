@@ -96,3 +96,16 @@ def test_grid_leaves_out_buried_blocks():
     assert p["total"] == 125 and len(p["cells"]) // 4 == 125 - 27 + 1
     stairs = next(b for b in p["blocks"] if b["name"] == "minecraft:oak_stairs@2")
     assert stairs["parts"] and stairs["opacity"] == 1.0
+
+
+def test_serve_picks_a_free_port():
+    import socket
+
+    from img2schem.cli import _free_port, _port_free
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        taken = busy.getsockname()[1]
+        assert not _port_free(taken)
+        assert _free_port(taken) != taken
