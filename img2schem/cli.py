@@ -6,8 +6,9 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -492,8 +493,10 @@ def compile_cmd(
         console.print(f"copied -> {target}   in game: //schem load {target.stem}   then //paste -a")
 
 
-def _run_claude(state: DesignState, brief: str, *, stage: str, name: str, out: Path, budget: str,
-                replay: Path | None, render: bool, record: dict[str, object]) -> tuple[DesignResult, Path]:  # fmt: skip
+def _run_claude(state: DesignState, brief: str | list[dict[str, Any]], *, stage: str, name: str, out: Path,
+                budget: str, replay: Path | None, render: bool, record: dict[str, object],
+                critique: Callable[[int], list[dict[str, Any]]] | None = None,
+                critique_passes: int = 0) -> tuple[DesignResult, Path]:  # fmt: skip
     """Run the designer on ``state`` (design or edit), keep what it built, write ops.json and design.json into
     ``out``. Returns (DesignResult, ops path)."""
     from img2schem.designer.prompt import PROMPT_VERSION, system_prompt
@@ -531,7 +534,8 @@ def _run_claude(state: DesignState, brief: str, *, stage: str, name: str, out: P
     ops_path = out / f"{name}.ops.json"
     try:
         result = run_design(state, brief, system_prompt(state.palette), tool_specs(render=render),
-                                          s.claude, limit, transport, budget, progress, on_warning)  # fmt: skip
+                            s.claude, limit, transport, budget, progress, on_warning,
+                            critique, critique_passes)  # fmt: skip
     except Exception as e:  # keep what was built before an API or network failure
         ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
         hint = ("\nhint: set ANTHROPIC_WORKSPACE_ID in .env (see .env.example), or use a key made inside a "
@@ -566,7 +570,9 @@ def _run_dir(name: str, out: Path | None) -> Path:
 
 @app.command()
 def design(
-    prompt: str = typer.Argument(..., help='What to build, e.g. "a stone watchtower with a spiral stair".'),
+    prompt: str = typer.Argument("", help='What to build, e.g. "a stone watchtower"; with --photo, notes.'),
+    photo: list[Path] = typer.Option([], "--photo", help="A photo of the building to recreate (repeatable)."),
+    critique: int | None = typer.Option(None, "--critique", help="Critique passes against the photo (default 2)."),
     name: str = typer.Option("design", "--name", help="Build name: builds/<name>.ops.json, and the schematic."),
     out: Path | None = typer.Option(None, "--out", help="Run directory (default: out/<name>_<timestamp>)."),
     budget: str = typer.Option("default", "--budget", help="API budget: default ($1 warn / $5 stop) or large."),
@@ -576,21 +582,46 @@ def design(
     """Claude designs a build from a description (S3), then it compiles like `compile`. Costs API credit.
 
     The build is kept as builds/<name>.ops.json with a version history: refine it with `img2schem edit`."""
+    from img2schem.designer.critique import critique_message, photo_brief
     from img2schem.designer.history import BUILDS, History
     from img2schem.designer.tools import DesignState
     from img2schem.engine.ops import OpsDoc
+    from img2schem.stages.ingest import IngestError, ingest
 
+    if not prompt and not photo:
+        raise _fail('describe the build, or give --photo PATH')
     s = load_settings()
     run = _run_dir(name, out)
     state = DesignState(OpsDoc(), _load_palette(), s.budgets, _active_palette())
-    brief = (f"Design this build: {prompt}\n\nStart from nothing: set the style slots, build it with ops, check "
-             "it with render_views, then call finish.")  # fmt: skip
+    photos = []
+    for i, p in enumerate(photo, start=1):
+        try:
+            photos.append(ingest(p, run / f"photo_{i}"))
+        except (IngestError, OSError) as e:
+            raise _fail(str(e)) from None
+    brief: str | list[dict[str, Any]] = (
+        photo_brief(photos, prompt) if photos else
+        f"Design this build: {prompt}\n\nStart from nothing: set the style slots, build it with ops, check it "
+        "with render_views, then call finish.")  # fmt: skip
+    passes = (2 if photos else 0) if critique is None else critique
+    if passes and not photos:
+        raise _fail("--critique compares the build with a photo: add --photo")
+
+    def critique_pass(n: int) -> list[dict[str, Any]]:
+        assert state.compiled is not None
+        console.print(f"[bold]critique pass {n}/{passes}[/bold]")
+        return critique_message(photos[0], state.compiled.grid, state.palette, n, passes,
+                                run / f"critique_{n}.png")  # fmt: skip
+
     result, ops_path = _run_claude(state, brief, stage="designing", name=name, out=run, budget=budget,
-                                   replay=replay, render=True, record={"prompt": prompt})  # fmt: skip
+                                   replay=replay, render=True, critique=critique_pass if passes else None,
+                                   critique_passes=passes,
+                                   record={"prompt": prompt, "photos": [str(p) for p in photo]})  # fmt: skip
     if not state.doc.ops:
         raise _fail("no ops were produced", EXIT_BUDGET if result.stopped == "budget" else 3)
     hist = History(BUILDS / f"{name}.ops.json")
-    n = hist.commit(ops_path.read_text(encoding="utf-8"), kind="design", instruction=prompt, run=str(run),
+    what = prompt or ", ".join(p.name for p in photo)
+    n = hist.commit(ops_path.read_text(encoding="utf-8"), kind="design", instruction=what, run=str(run),
                     cost_usd=round(result.cost_usd, 4), summary=result.summary)
     console.print(f"build {name!r} version {n}: {hist.ops_path}   refine: img2schem edit {name} \"...\"")
     _compile_run(result, ops_path, run, name, copy)

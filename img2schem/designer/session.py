@@ -27,6 +27,7 @@ class DesignResult:
     turns: int
     cost_usd: float
     usage: list[dict[str, Any]] = field(default_factory=list)  # per turn: model, tokens, cost
+    critique_passes: int = 0
     warnings: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)  # Claude's prose between tool calls
 
@@ -39,7 +40,7 @@ def _tokens(obj: Any) -> int:
 
 def run_design(
     state: DesignState,
-    brief: str,
+    brief: str | list[dict[str, Any]],
     system: str,
     tools: list[dict[str, Any]],
     settings: ClaudeSettings,
@@ -48,7 +49,11 @@ def run_design(
     budget_name: str = "default",
     progress: Progress | None = None,
     on_warning: Callable[[str], None] | None = None,
+    critique: Callable[[int], list[dict[str, Any]]] | None = None,
+    critique_passes: int = 0,
 ) -> DesignResult:
+    """``critique(n)`` gives the content of critique pass n (RC.1): after each ``finish``, up to
+    ``critique_passes`` times, it is sent to Claude, which fixes what it finds and finishes again."""
     guard = BudgetGuard(budget, budget_name)
     messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
     result = DesignResult("turn_cap", None, 0, 0.0)
@@ -135,7 +140,13 @@ def run_design(
         if finished:
             result.stopped = "finished"
             result.summary = state.summary
-            break
+            if critique is None or result.critique_passes >= critique_passes:
+                break
+            result.critique_passes += 1
+            extra = critique(result.critique_passes)
+            messages.append({"role": "user", "content": [*results, *extra]})  # tool results first
+            context += _tokens([results, extra])
+            continue
         messages.append({"role": "user", "content": results})
         context += _tokens(results)
     return result

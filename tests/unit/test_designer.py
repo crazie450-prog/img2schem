@@ -237,3 +237,43 @@ def test_replay_of_the_owners_first_live_session():
         assert "rail" not in [o.id for o in state.doc.ops] and len(state.doc.ops) == 18
     else:
         assert len(state.doc.ops) == 20 and state.compiled.grid.nonair() == 776
+
+
+def test_critique_passes_follow_finish():
+    calls = []
+
+    def critique(n):
+        calls.append(n)
+        return [{"type": "text", "text": f"CRITIQUE {n}"}]
+
+    state = new_state()
+    t = Scripted(synthetic.PHOTO_TURNS)
+    r = run_design(state, [{"type": "text", "text": "photo brief"}], "S", tool_specs(), SETTINGS, BUDGET, t,
+                   critique=critique, critique_passes=2)  # fmt: skip
+    assert (r.stopped, r.turns, r.critique_passes, calls) == ("finished", 3, 2, [1, 2])
+    assert r.summary == "Close enough: the rest is cosmetic."
+    msg = t.requests[1]["messages"][-1]["content"]  # tool results first, then the critique
+    assert [b["type"] for b in msg] == ["tool_result", "tool_result", "tool_result", "text"]
+    assert msg[-1]["text"] == "CRITIQUE 1" and [o.id for o in state.doc.ops] == ["walls", "roof"]
+    once = run_design(new_state(), "b", "S", tool_specs(), SETTINGS, BUDGET, Scripted(synthetic.PHOTO_TURNS),
+                      critique=critique, critique_passes=1)  # fmt: skip
+    assert (once.turns, once.critique_passes, once.summary) == (2, 1, "Added the roof slab.")
+
+
+def test_photo_brief_and_critique_sheet(tmp_path):
+    from PIL import Image
+
+    from img2schem.designer.critique import critique_message, photo_brief
+    from img2schem.models import BlockGrid
+
+    p = tmp_path / "house.png"
+    Image.new("RGB", (3000, 1500), (200, 180, 160)).save(p)
+    brief = photo_brief([p, p], "make it 1.5x scale")
+    assert [b["type"] for b in brief] == ["image", "image", "text"]
+    assert "same building" in brief[-1]["text"] and "1.5x scale" in brief[-1]["text"]
+    g = BlockGrid.empty(4, 6, 3)
+    g.fill((0, 0, 0), (3, 5, 2), "minecraft:stone")
+    msg = critique_message(p, g, None, 1, 2, tmp_path / "c.png")
+    assert msg[0]["type"] == "image" and "pass 1 of 2" in msg[1]["text"]
+    sheet = Image.open(tmp_path / "c.png")
+    assert sheet.height == 520 + 28 and sheet.width > 1000  # photo, iso and front side by side

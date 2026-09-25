@@ -61,3 +61,20 @@ EDIT_TURNS = [  # "make it a gable roof with a mossy base"
     response([tool(23, "finish", {"summary": "Gable roof and a mossy cobblestone base course."})]),
 ]  # fmt: skip
 NO_CHANGE_TURNS = [response([{"type": "text", "text": "It already has that."}], stop="end_turn")]
+
+
+PHOTO_TURNS = [  # a design from a photo, then two critique passes
+    response([
+        {"type": "text", "text": "I see a 9 x 7 two-storey block with a flat roof."},
+        tool(30, "set_style", {"slots": {"wall": "minecraft:quartz_block", "floor": "minecraft:planks"}}),
+        tool(31, "add_walls", {"id": "walls", "footprint": {"x0": 0, "z0": 0, "x1": 8, "z1": 6}, "y0": 1,
+                               "height": 8}),
+        tool(32, "finish", {"summary": "First pass."}),
+    ]),
+    response([
+        {"type": "text", "text": "1. The photo has a flat roof slab; mine has none."},
+        tool(33, "add_floors", {"id": "roof", "footprint": {"x0": -1, "z0": -1, "x1": 9, "z1": 7}, "ys": [9]}),
+        tool(34, "finish", {"summary": "Added the roof slab."}),
+    ]),
+    response([tool(35, "finish", {"summary": "Close enough: the rest is cosmetic."})]),
+]  # fmt: skip

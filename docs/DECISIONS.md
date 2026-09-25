@@ -416,3 +416,17 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   history becomes version 1 before its first edit.
 - Each edit is validated change by change like a design (a change that fails is rolled back), so the saved
   version always compiles; a budget stop keeps the changes made so far as the new version (undo reverts it).
+
+### D-034 Design from photos, with the critique pass (RC.1)
+- **Photos go to Claude directly:** `design --photo P [--photo P2 ...] ["notes"]` ingests each photo (S0) into
+  the run folder and puts the images in the brief, asking Claude to state what it sees (footprint, storeys,
+  volumes, roof, front openings, materials per role) before building, with the camera side at z = 0 and
+  plausible hidden sides. **Deviation:** the SOW's S2 analysis (pass A/B -> spec.json) and the template as a
+  starting point are skipped for now: Opus 5.5 reads images well enough to design from them in one loop, and
+  the owner's photos (modern cantilevered houses) are outside what the rectangle-and-gable template covers.
+  S2 remains the route for measured, repeatable specs.
+- **Critique (RC.1, RC.2):** after `finish`, up to `--critique N` times (default 2 with photos), Claude gets a
+  side-by-side sheet (photo | iso from the north-west | front elevation), lists the top discrepancies, fixes
+  them and finishes again. The sheet goes in the same user message as the finish tool result (the history
+  stays append-only). Each sheet is saved as `critique_N.png` in the run folder; `design.json` records the
+  passes.

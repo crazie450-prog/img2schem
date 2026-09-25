@@ -175,3 +175,25 @@ def test_design_live_needs_a_key(tmp_path, monkeypatch):
     r = runner.invoke(app, ["design", "a hut", "--out", str(tmp_path / "o")])
     assert r.exit_code == 4 and ".env" in r.output
     assert runner.invoke(app, ["design", "a hut", "--budget", "huge"]).exit_code == 4
+
+
+@pytest.mark.replay
+def test_design_from_a_photo_with_critique(tmp_path, monkeypatch):
+    from fixtures.designer import synthetic
+    from PIL import Image
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _env(tmp_path, monkeypatch)
+    photo = tmp_path / "house.jpg"
+    Image.new("RGB", (800, 600), (180, 180, 170)).save(photo)
+    session = synthetic.write(tmp_path / "s.jsonl", synthetic.PHOTO_TURNS)
+    out = tmp_path / "run"
+    r = runner.invoke(app, ["design", "--photo", str(photo), "--name", "house", "--replay", str(session),
+                            "--out", str(out), "--no-copy"])  # fmt: skip
+    assert r.exit_code == 0, r.output
+    assert (out / "photo_1" / "image.png").is_file()
+    assert (out / "critique_1.png").is_file() and (out / "critique_2.png").is_file()
+    record = json.loads((out / "design.json").read_text())
+    assert record["critique_passes"] == 2 and record["photos"] == [str(photo)]
+    assert runner.invoke(app, ["design", "--name", "x"]).exit_code == 4  # neither text nor photo
+    assert runner.invoke(app, ["design", "a hut", "--critique", "1"]).exit_code == 4  # critique needs a photo

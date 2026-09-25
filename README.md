@@ -45,6 +45,7 @@ img2schem compile examples/tower.ops.json      # a 109-tall curved tower (loft/s
 img2schem compile examples/courtyard.ops.json  # one component placed four ways (define/place/mirror)
 img2schem design "a stone watchtower" --name watchtower  # Claude designs it (costs API credit), then compiles
 img2schem design "..." --budget large                    # $5 warning / $10 hard stop instead of $1 / $5
+img2schem design --photo house.jpg --name villa "notes"  # from a photo (repeat --photo for more views), 2 critique passes
 img2schem edit watchtower "make the roof steeper"        # Claude changes builds/watchtower.ops.json: a new version
 img2schem history watchtower                             # versions, instructions, cost
 img2schem undo watchtower                                # back one version (redo: forward), recompiled
