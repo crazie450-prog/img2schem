@@ -399,3 +399,20 @@ Entries marked **verify** need a check on the owner's machine or test bed.
 - **Fallback:** `claude-opus-5` re-runs a declined turn (the documented targets are Opus 5 / 4.8). It is dearer
   ($5 / $25), so the budget's worst case is priced at the dearer of the two models, and each turn is priced by
   the model that served it.
+
+### D-033 Edits with version history (RD.4)
+- **Builds have a home:** `design --name N` keeps the build as `builds/N.ops.json` (git-ignored, like `out/`),
+  with every version in `builds/N.history/` (`v001.ops.json`, ...; `log.json` holds the current version and
+  each version's kind, instruction, run folder, cost and summary). **Deviation:** the SOW puts the undo
+  history in ops.json; a sidecar keeps ops.json a plain build program that `compile` and hand edits read as
+  before.
+- **`edit N "instruction"`** starts from the current version and runs the same loop, tools and checks as
+  `design`, with the whole ops.json (defaults left out) and the open validator issues in the brief.
+  **Deviation:** the SOW sends only `get_state_summary()`; without the ops' fields Claude can't `replace_op`
+  reliably, and a build's ops are small next to the cached prompt. `render_views` is left out by default as
+  the SOW says (`--render` adds it). An edit that changes nothing adds no version.
+- **`undo` / `redo`** move through versions and recompile (so `//schem load` shows it); an edit after an undo
+  drops the undone versions. `history` lists them with the total API cost. An ops.json made outside the
+  history becomes version 1 before its first edit.
+- Each edit is validated change by change like a design (a change that fails is rolled back), so the saved
+  version always compiles; a budget stop keeps the changes made so far as the new version (undo reverts it).

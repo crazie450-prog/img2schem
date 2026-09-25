@@ -85,10 +85,12 @@ class ReplayTransport:
         self.digests = [r.get("request_digest") for r in lines]
         self.turn = 0
         self.mismatches = 0  # requests that differ from the recording (the code or prompt changed since)
+        self.requests: list[dict[str, Any]] = []
 
     def send(self, request: dict[str, Any], progress: Progress | None = None) -> dict[str, Any]:
         if self.turn >= len(self.responses):
             raise RuntimeError(f"the recording has only {len(self.responses)} turns")
+        self.requests.append(request)
         if self.digests[self.turn] not in (None, request_digest(request)):
             self.mismatches += 1
         response = self.responses[self.turn]

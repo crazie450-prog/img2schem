@@ -43,8 +43,11 @@ img2schem plan examples/brick_house.spec.json  # spec.json (measured description
 img2schem compile examples/brick_house.ops.json # ops.json -> .schematic + previews + report.json (+ WorldEdit folder)
 img2schem compile examples/tower.ops.json      # a 109-tall curved tower (loft/sweep ops, docs/DSL.md)
 img2schem compile examples/courtyard.ops.json  # one component placed four ways (define/place/mirror)
-img2schem design "a stone watchtower with a spiral stair"  # Claude designs it (costs API credit), then compiles
+img2schem design "a stone watchtower" --name watchtower  # Claude designs it (costs API credit), then compiles
 img2schem design "..." --budget large                    # $5 warning / $10 hard stop instead of $1 / $5
+img2schem edit watchtower "make the roof steeper"        # Claude changes builds/watchtower.ops.json: a new version
+img2schem history watchtower                             # versions, instructions, cost
+img2schem undo watchtower                                # back one version (redo: forward), recompiled
 python examples/make_test_grids.py       # Phase 0 test grids -> out/testgrids/ (+ your WorldEdit folder)
 img2schem inspect  some.schematic        # size, blocks, counts, mods required
 img2schem preview  some.schematic --out out/prev

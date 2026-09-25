@@ -62,3 +62,4 @@ should be resolved (not `id:<n>`) and the counts should match.
 | Tower detail pass (D-027): smoothed blades, mullions, lights, spiral stair to the roof, terrace doors facing east | ⏳ to check in game: stair directions on the blades, walking up the spiral, terrace doors open outward and stay on, no mobs inside at night |
 | `examples/courtyard.ops.json` (D-029): one kiosk placed four ways, mirrored doors, varied paving, fence | ⏳ to check in game: each door faces the center and opens, roofs intact, mossy bricks scattered, gap in the north fence |
 | First live `img2schem design` run (D-031, D-032) | ✅ ran: watchtower, 5 turns, $0.33 on Opus 5.5 (in-game check pending); it found the roof's sealing ring on an open lookout -> `seal: false` |
+| First live `img2schem edit` + `undo` (D-033) | ⏳ owner: edit the watchtower, check the change in game, undo it |

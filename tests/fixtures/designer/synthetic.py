@@ -49,3 +49,15 @@ TURNS = [
 def write(path: Path, turns: list[dict[str, Any]] | None = None) -> Path:
     path.write_text("".join(json.dumps({"response": t}) + "\n" for t in (turns or TURNS)), encoding="utf-8")
     return path
+
+
+EDIT_TURNS = [  # "make it a gable roof with a mossy base"
+    response([
+        tool(20, "set_style", {"slots": {"base": "minecraft:mossy_cobblestone"}}),
+        tool(21, "replace_op", {"id": "roof", "op": {"op": "roof", "id": "roof", "footprint": FOOT, "y0": 14,
+                                                    "type": "gable", "ridge": "z"}}),
+        tool(22, "add_walls", {"id": "base", "footprint": FOOT, "y0": 1, "height": 1, "mat": "$base"}),
+    ]),
+    response([tool(23, "finish", {"summary": "Gable roof and a mossy cobblestone base course."})]),
+]  # fmt: skip
+NO_CHANGE_TURNS = [response([{"type": "text", "text": "It already has that."}], stop="end_turn")]
