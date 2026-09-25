@@ -107,3 +107,17 @@ def test_height_limit_of_a_1_7_10_world():
     issues = validate_grid(g, Budgets(), shape_of=SHAPE)
     assert any(i.rule == "R10.2" and i.severity == "error" and "height 257" in i.message for i in issues)
     assert Budgets().max_dim == 256 and Budgets().hard_max_total == 16_000_000
+
+
+def test_roof_hole_needs_nothing_under_it():
+    """A gutter between two roofs sits on a lower roof course: not a hole (R10.8 false positive, house 3)."""
+    g = BlockGrid.empty(3, 3, 1)
+    labels = np.zeros(g.shape, np.uint8)
+    for x in (0, 2):
+        g.set(x, 2, 0, "minecraft:stone_slab")
+        labels[x, 2, 0] = 4
+    assert "R10.8" in rules(validate_grid(g, Budgets(), shape_of=SHAPE, labels=labels), "warning")  # see-through
+    g.set(1, 1, 0, "minecraft:stone_slab@8")  # a lower course right under the gap
+    labels[1, 1, 0] = 4
+    assert "R10.8" not in rules(validate_grid(g, Budgets(), shape_of=SHAPE, labels=labels), "warning")
+

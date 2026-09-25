@@ -299,3 +299,18 @@ def test_replay_of_the_owners_photo_session_with_critique():
     assert r.cost_usd == pytest.approx(0.8352, abs=1e-4) and r.cost_usd < BUDGET.warn
     assert any("mirrored" in t for t in r.text)
     assert state.doc.ops  # without the owner's palette some ops are rejected, but the build stands
+
+
+HOUSE3 = Path(__file__).parents[1] / "fixtures" / "designer" / "house3_photo_live.session.jsonl"
+
+
+@pytest.mark.replay
+def test_replay_of_the_owners_photo_session_prompt_v2():
+    """House 3 on prompt v2: the right way round from the start, so the critique passes found only small
+    differences (21 turns, $0.77)."""
+    state = DesignState(OpsDoc(), None, Budgets())
+    r = run_design(state, "photo", "S", tool_specs(), SETTINGS, BUDGET, ReplayTransport(HOUSE3),
+                   critique=lambda n: [{"type": "text", "text": "c"}], critique_passes=2)  # fmt: skip
+    assert (r.stopped, r.turns, r.critique_passes) == ("finished", 21, 2)
+    assert r.cost_usd == pytest.approx(0.7721, abs=1e-4)
+    assert r.summary.startswith("Nothing was mirrored")

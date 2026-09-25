@@ -199,7 +199,10 @@ def validate_grid(
             issues.append(Issue(rule="R10.3b", severity="warning", pos=(int(x), int(y), int(z)),
                                 message="a window touches the roof line"))  # fmt: skip
         roof = labels == ROOF
+        # A hole lets you see through the roof: air between roof blocks with nothing under it. Air above another
+        # roof course (a gutter between two roofs, a stepped course) is not one.
         hole = grid.idx == 0
+        hole[:, 1:, :] &= grid.idx[:, :-1, :] == 0
         both_x = np.zeros_like(roof)
         both_x[1:-1] = roof[:-2] & roof[2:]
         both_z = np.zeros_like(roof)

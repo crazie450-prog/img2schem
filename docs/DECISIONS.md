@@ -440,3 +440,10 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   the viewer of the front looks south, so the photo's left is east (+x); the critique checks for mirroring
   first; the front panel of the critique sheet is labelled "left = east, +x". Aim: right on the first try, so
   the critique passes go to refinements.
+
+### D-036 R10.8 counts only see-through roof holes
+- **Context:** house 3 (owner, prompt v2) reported four "single-block holes in the roof" that Claude couldn't
+  find. They were a gutter between two roofs (the main roof's flat overhang and the upper room's low hip roof),
+  sitting on the hip roof's lower course: nothing to see through.
+- **Decision:** R10.8 flags an air cell between roof blocks only when the cell below it is empty too. A false
+  warning costs more than noise here: it goes into every tool result and the designer spends turns on it.
