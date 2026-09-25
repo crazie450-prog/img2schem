@@ -63,4 +63,4 @@ should be resolved (not `id:<n>`) and the counts should match.
 | `examples/courtyard.ops.json` (D-029): one kiosk placed four ways, mirrored doors, varied paving, fence | ⏳ to check in game: each door faces the center and opens, roofs intact, mossy bricks scattered, gap in the north fence |
 | First live `img2schem design` run (D-031, D-032) | ✅ ran: watchtower, 5 turns, $0.33 on Opus 5.5 (in-game check pending); it found the roof's sealing ring on an open lookout -> `seal: false` |
 | First live `img2schem edit` + `undo` (D-033) | ✅ edit ran: "remove the ring of stone bricks at the eaves" -> Claude set the roof's `seal: false`, 2 turns, $0.18, 776 -> 744 blocks (exactly the 32-block ring); undo and in-game check pending |
-| First photo design with critique (D-034): the owner's three modern houses | ⏳ owner: run each photo, compare critique_*.png and the build in game |
+| First photo design with critique (D-034): the owner's three modern houses | house 2 ✅ massing, garage wing, dark tower element, cladding/render split match; pass 1 mirrored, critique pass 1 fixed it (-> D-035); houses 1 and 3 ⏳ |

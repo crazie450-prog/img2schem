@@ -432,9 +432,11 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   passes.
 
 ### D-035 Handedness in photo designs (prompt v2)
-- **Context:** the first photo design (the owner's second modern house) looks mirrored against the photo in the
-  critique sheet's front view (garage on the right instead of the left), and the critique passes didn't flag
-  it. Reading "left in the photo = low x" mirrors a build whose front faces north.
+- **Context:** the first photo design (the owner's second modern house) came out mirrored before critique
+  (garage on the right of the front view instead of the left). Critique pass 1 caught it and rebuilt the house
+  the right way round (critique_2 matches the photo and the in-game paste), but that spent a pass. Reading
+  "left in the photo = low x" mirrors a build whose front faces north.
 - **Decision:** the system prompt (now v2), the photo brief and the critique prompt state the rule outright:
   the viewer of the front looks south, so the photo's left is east (+x); the critique checks for mirroring
-  first; the front panel of the critique sheet is labelled "left = east, +x".
+  first; the front panel of the critique sheet is labelled "left = east, +x". Aim: right on the first try, so
+  the critique passes go to refinements.
