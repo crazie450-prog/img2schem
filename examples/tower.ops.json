@@ -1,0 +1,664 @@
+{
+ "version": 1,
+ "style": {
+  "glass": "minecraft:stained_glass@3",
+  "floor": "minecraft:quartz_block",
+  "metal": "minecraft:iron_block",
+  "plaza": "etfuturum:smooth_stone",
+  "inlay": "minecraft:stained_glass@9",
+  "rail": "minecraft:stained_glass_pane@3",
+  "green": "minecraft:stained_hardened_clay@13",
+  "door": "minecraft:wooden_door",
+  "blade": "minecraft:quartz_block",
+  "blade.stairs": "minecraft:quartz_stairs",
+  "floor.stairs": "minecraft:quartz_stairs",
+  "light": "minecraft:glowstone"
+ },
+ "ops": [
+  {
+   "op": "loft",
+   "id": "plaza",
+   "label": "Elliptical plaza",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 40,
+     "rz": 34
+    }
+   },
+   "keys": [
+    {
+     "y": 0
+    }
+   ],
+   "mat": "$plaza",
+   "lights": {
+    "every": 5,
+    "mat": "$light"
+   }
+  },
+  {
+   "op": "loft",
+   "id": "plaza-ring",
+   "label": "Glowing ring inlay",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 31,
+     "rz": 26
+    }
+   },
+   "keys": [
+    {
+     "y": 0
+    }
+   ],
+   "fill": "shell",
+   "thickness": 2,
+   "mat": "$inlay"
+  },
+  {
+   "op": "loft",
+   "id": "core",
+   "label": "Glass core - elliptical, tapering and twisting, floors every 4, lit, with twisting mullions",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 13,
+     "rz": 9
+    }
+   },
+   "keys": [
+    {
+     "y": 0
+    },
+    {
+     "y": 50,
+     "scale": 0.85,
+     "rotate": 10
+    },
+    {
+     "y": 96,
+     "scale": 0.6,
+     "rotate": 25,
+     "dx": -2
+    }
+   ],
+   "fill": "shell",
+   "mat": "$glass",
+   "floor_every": 4,
+   "floor_mat": "$floor",
+   "caps": true,
+   "mullions": {
+    "count": 12,
+    "mat": "$metal"
+   },
+   "lights": {
+    "every": 4,
+    "mat": "$light"
+   }
+  },
+  {
+   "op": "loft",
+   "id": "spine",
+   "label": "Main blade: arcs up across the north face and leans west",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 9,
+     "rz": 5
+    },
+    "minus": [
+     {
+      "shape": "ellipse",
+      "center": [
+       0,
+       2.5
+      ],
+      "rx": 9.5,
+      "rz": 4.5
+     }
+    ]
+   },
+   "keys": [
+    {
+     "y": 0,
+     "dx": 19,
+     "dz": -9,
+     "scale": 1.25,
+     "rotate": -40
+    },
+    {
+     "y": 30,
+     "dx": 13,
+     "dz": -12,
+     "scale": 1.1,
+     "rotate": -22
+    },
+    {
+     "y": 60,
+     "dx": 5,
+     "dz": -13,
+     "rotate": -2
+    },
+    {
+     "y": 88,
+     "dx": -4,
+     "dz": -11,
+     "scale": 0.85,
+     "rotate": 18
+    },
+    {
+     "y": 108,
+     "dx": -11,
+     "dz": -7,
+     "scale": 0.5,
+     "rotate": 35
+    }
+   ],
+   "mat": "$blade",
+   "smooth": true
+  },
+  {
+   "op": "loft",
+   "id": "blade-west",
+   "label": "Second blade on the west side",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 9,
+     "rz": 5
+    },
+    "minus": [
+     {
+      "shape": "ellipse",
+      "center": [
+       0,
+       2.5
+      ],
+      "rx": 9.5,
+      "rz": 4.5
+     }
+    ]
+   },
+   "mat": "$blade",
+   "keys": [
+    {
+     "y": 0,
+     "dx": -17,
+     "dz": 7,
+     "scale": 1.1,
+     "rotate": -70
+    },
+    {
+     "y": 45,
+     "dx": -16,
+     "dz": 2,
+     "rotate": -90
+    },
+    {
+     "y": 94,
+     "dx": -10,
+     "dz": -3,
+     "scale": 0.65,
+     "rotate": -110
+    }
+   ],
+   "smooth": true
+  },
+  {
+   "op": "sweep",
+   "id": "rib",
+   "label": "Rear rib",
+   "radius": 1.5,
+   "mat": "$metal",
+   "points": [
+    [
+     16,
+     1,
+     12
+    ],
+    [
+     13,
+     35,
+     13
+    ],
+    [
+     6,
+     70,
+     12
+    ],
+    [
+     -4,
+     98,
+     6
+    ]
+   ]
+  },
+  {
+   "op": "loft",
+   "id": "terrace-1",
+   "label": "Suspended terrace, level 36",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      15,
+      1
+     ],
+     "rx": 10,
+     "rz": 7
+    }
+   },
+   "keys": [
+    {
+     "y": 36
+    }
+   ],
+   "mat": "$floor",
+   "lights": {
+    "every": 5,
+    "mat": "$light"
+   }
+  },
+  {
+   "op": "loft",
+   "id": "terrace-1-rail",
+   "label": "Terrace railing",
+   "mode": "keep",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      15,
+      1
+     ],
+     "rx": 10,
+     "rz": 7
+    },
+    "minus": [
+     {
+      "shape": "ellipse",
+      "rx": 11,
+      "rz": 8
+     }
+    ]
+   },
+   "keys": [
+    {
+     "y": 37
+    }
+   ],
+   "fill": "shell",
+   "mat": "$rail"
+  },
+  {
+   "op": "loft",
+   "id": "terrace-2",
+   "label": "Suspended terrace, level 52",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      14,
+      2
+     ],
+     "rx": 9,
+     "rz": 6
+    }
+   },
+   "keys": [
+    {
+     "y": 52
+    }
+   ],
+   "mat": "$floor",
+   "lights": {
+    "every": 5,
+    "mat": "$light"
+   }
+  },
+  {
+   "op": "loft",
+   "id": "terrace-2-rail",
+   "label": "Terrace railing",
+   "mode": "keep",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      14,
+      2
+     ],
+     "rx": 9,
+     "rz": 6
+    },
+    "minus": [
+     {
+      "shape": "ellipse",
+      "rx": 10,
+      "rz": 7
+     }
+    ]
+   },
+   "keys": [
+    {
+     "y": 53
+    }
+   ],
+   "fill": "shell",
+   "mat": "$rail"
+  },
+  {
+   "op": "loft",
+   "id": "terrace-3",
+   "label": "Suspended terrace, level 64",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      12,
+      2
+     ],
+     "rx": 8,
+     "rz": 6
+    }
+   },
+   "keys": [
+    {
+     "y": 64
+    }
+   ],
+   "mat": "$floor",
+   "lights": {
+    "every": 5,
+    "mat": "$light"
+   }
+  },
+  {
+   "op": "loft",
+   "id": "terrace-3-rail",
+   "label": "Terrace railing",
+   "mode": "keep",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "center": [
+      12,
+      2
+     ],
+     "rx": 8,
+     "rz": 6
+    },
+    "minus": [
+     {
+      "shape": "ellipse",
+      "rx": 9,
+      "rz": 6
+     }
+    ]
+   },
+   "keys": [
+    {
+     "y": 65
+    }
+   ],
+   "fill": "shell",
+   "mat": "$rail"
+  },
+  {
+   "op": "box",
+   "id": "green-wall-1",
+   "label": "Planted wall between terraces",
+   "from": [
+    11,
+    40,
+    -1
+   ],
+   "to": [
+    11,
+    50,
+    3
+   ],
+   "mat": "$green"
+  },
+  {
+   "op": "box",
+   "id": "green-wall-2",
+   "label": "Planted wall between terraces",
+   "from": [
+    10,
+    56,
+    0
+   ],
+   "to": [
+    10,
+    62,
+    3
+   ],
+   "mat": "$green"
+  },
+  {
+   "op": "door",
+   "id": "entrance-w",
+   "label": "Entrance double door (west leaf)",
+   "pos": [
+    -1,
+    1,
+    -9
+   ],
+   "facing": "north",
+   "hinge": "left"
+  },
+  {
+   "op": "door",
+   "id": "entrance-e",
+   "label": "Entrance double door (east leaf)",
+   "pos": [
+    0,
+    1,
+    -9
+   ],
+   "facing": "north",
+   "hinge": "right"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-36-n-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    9,
+    37,
+    1
+   ],
+   "to": [
+    12,
+    38,
+    1
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-36-n",
+   "label": "Door onto the level-36 terrace",
+   "pos": [
+    11,
+    37,
+    1
+   ],
+   "facing": "east",
+   "hinge": "left"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-36-s-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    9,
+    37,
+    2
+   ],
+   "to": [
+    12,
+    38,
+    2
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-36-s",
+   "label": "Door onto the level-36 terrace",
+   "pos": [
+    11,
+    37,
+    2
+   ],
+   "facing": "east",
+   "hinge": "right"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-52-n-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    8,
+    53,
+    1
+   ],
+   "to": [
+    11,
+    54,
+    1
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-52-n",
+   "label": "Door onto the level-52 terrace",
+   "pos": [
+    10,
+    53,
+    1
+   ],
+   "facing": "east",
+   "hinge": "left"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-52-s-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    7,
+    53,
+    2
+   ],
+   "to": [
+    10,
+    54,
+    2
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-52-s",
+   "label": "Door onto the level-52 terrace",
+   "pos": [
+    9,
+    53,
+    2
+   ],
+   "facing": "east",
+   "hinge": "right"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-64-n-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    6,
+    65,
+    1
+   ],
+   "to": [
+    9,
+    66,
+    1
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-64-n",
+   "label": "Door onto the level-64 terrace",
+   "pos": [
+    8,
+    65,
+    1
+   ],
+   "facing": "east",
+   "hinge": "left"
+  },
+  {
+   "op": "carve",
+   "id": "terrace-door-64-s-way",
+   "label": "Doorway through the core wall and the railing outside it",
+   "from": [
+    6,
+    65,
+    2
+   ],
+   "to": [
+    9,
+    66,
+    2
+   ]
+  },
+  {
+   "op": "door",
+   "id": "terrace-door-64-s",
+   "label": "Door onto the level-64 terrace",
+   "pos": [
+    8,
+    65,
+    2
+   ],
+   "facing": "east",
+   "hinge": "right"
+  },
+  {
+   "op": "spiral_stair",
+   "id": "stair",
+   "label": "Spiral stair from the lobby to the roof deck",
+   "center": [
+    0,
+    0
+   ],
+   "y0": 1,
+   "y1": 96,
+   "mat": "$floor.stairs",
+   "column": "$metal"
+  },
+  {
+   "op": "loft",
+   "id": "roof-rail",
+   "label": "Roof deck railing",
+   "mode": "keep",
+   "profile": {
+    "outer": {
+     "shape": "ellipse",
+     "rx": 13,
+     "rz": 9
+    }
+   },
+   "keys": [
+    {
+     "y": 97,
+     "scale": 0.6,
+     "rotate": 25,
+     "dx": -2
+    }
+   ],
+   "fill": "shell",
+   "mat": "$rail"
+  }
+ ]
+}

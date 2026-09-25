@@ -10,5 +10,8 @@ __pycache__/
 build/
 dist/
 out/
+builds/
 # Never commit extracted textures/atlases (SOW C16)
 atlas.png
+web/node_modules/
+web/*.tsbuildinfo

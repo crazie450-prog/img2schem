@@ -39,3 +39,20 @@ def test_iso_and_write(tmp_path):
     assert _solid(render_iso(g)).any()
     paths = write_previews(g, tmp_path)
     assert [p.name for p in paths] == ["preview_front.png", "preview_side.png", "preview_top.png", "preview_iso.png"]
+
+
+def test_stairs_and_slabs_are_drawn_as_their_boxes():
+    from img2schem.stages.preview import block_parts
+
+    assert block_parts("minecraft:stone") is None
+    assert block_parts("minecraft:stone_slab") == [(0, 0, 0, 1, 0.5, 1)]
+    assert block_parts("minecraft:stone_slab@8") == [(0, 0.5, 0, 1, 1, 1)]  # vanilla top half
+    # ascending east: the raised back half is on the east (+X) side
+    assert block_parts("minecraft:oak_stairs") == [(0, 0, 0, 1, 0.5, 1), (0.5, 0.5, 0, 1, 1, 1)]
+    # upside-down, ascending north: full top half, the lower back quarter on the north (-Z) side
+    assert block_parts("minecraft:oak_stairs@7") == [(0, 0.5, 0, 1, 1, 1), (0, 0, 0, 1, 0.5, 0.5)]
+    g = BlockGrid.empty(3, 2, 3)
+    g.set(1, 0, 1, "minecraft:oak_stairs")
+    full = BlockGrid.empty(3, 2, 3)
+    full.set(1, 0, 1, "minecraft:planks")
+    assert 0 < _solid(render_iso(g)).sum() < _solid(render_iso(full)).sum()  # a stair covers less than a cube

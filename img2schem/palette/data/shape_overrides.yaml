@@ -1,0 +1,10 @@
+# Shape corrections for blocks the class/name rules in palette/nei.py get wrong.
+# block registry name: full_cube | stairs | slab | wall | fence | fence_gate | pane | door | trapdoor | log | unknown
+openmodularturrets:hardWallTierOne: full_cube
+openmodularturrets:hardWallTierTwo: full_cube
+openmodularturrets:hardWallTierThree: full_cube
+openmodularturrets:hardWallTierFour: full_cube
+openmodularturrets:hardWallTierFive: full_cube
+chisel:paperwall_block: full_cube
+witchery:mirrorwall: unknown
+witchery:wallgen: unknown

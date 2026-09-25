@@ -1,45 +1,81 @@
-# Test bed runbook
+# Test bed runbook (GTNH 1.7.10)
 
-Expanded from SOW Appendix B. Record versions and results at the end of every phase (B3).
+Expanded from SOW Appendix B, re-scoped per docs/SOW_GTNH.md. Record versions and results at the end of every
+phase.
 
-## B1. Primary: the owner's modded instance (single-player)
+## Setup
 
-1. `img2schem instance list` → confirm the loader and MC version. Install the WorldEdit build for that
-   loader + version from the official distribution if missing.
-2. Create a **creative, superflat** world named `img2schem-test`. Never test in a survival world you care about.
-3. Launch once so `config/worldedit/` exists. `img2schem doctor` shows the schematics folder; create it if missing.
-4. `python examples/make_test_grids.py --modded-full <id> --modded-stairs <id>` (pick ids from
-   `palette_report.json` / `palette.json`). With WorldEdit detected the files are copied into the schematics
-   folder automatically (R8.10).
-5. In game: `//schem list`, `//schem load img2schem_cube`, stand where the build should go **facing south**,
-   `//paste -a`. Expected: the front facade 2 blocks in front of you, centered on you. `//undo` removes it.
-6. Check each build:
-   - no errors in chat or `logs/latest.log`;
-   - orientation: on the cube, the **white** face is toward you, the **red** face is on your **right**, and the
-     gold block is at the top **left** corner of the white face;
-   - house: door in the middle of the facing wall, roof ridge running left–right, windows as panes;
-   - stairs, slabs, panes and doors look right; modded blocks render; nothing falls;
-   - block counts match `img2schem inspect`.
-7. `//copy` + `//schem save <name>` a re-copy, then `img2schem inspect` it (this proves the reader on real files;
-   WorldEdit 7.3 saves Sponge v3).
+1. `img2schem instance list` → GTNH shows loader `forge`, MC `1.7.10`, **WorldEdit = yes**.
+   `img2schem instance use <name from the list>`.
+2. In GTNH, create a **creative, superflat** world named `img2schem-test`. Never test in a survival world you
+   care about. Quit to the title screen once so level.dat is written.
+3. `img2schem world use img2schem-test` → lists registered blocks per mod. `img2schem doctor` → all green.
+4. Pick a modded full block and a modded stairs block from the list (e.g. from `chisel` or another building
+   mod) and run:
+   `python examples/make_test_grids.py --modded-full <modid:name> --modded-stairs <modid:name>`
+   The files are copied into the WorldEdit schematics folder shown by `doctor`.
 
-## B2. Vanilla compatibility: Paper (vanilla-only builds)
+## Paste checks
 
-1. Java 21; the latest Paper for the target 1.21.x.
-2. Two server folders: `server-fawe/` (FastAsyncWorldEdit) and `server-we/` (WorldEdit 7.3+).
-3. `online-mode=false` for local testing if wanted; `op <name>`.
-4. Copy the `.schem` files to `plugins/WorldEdit/schematics/` (or FAWE's folder) and run the B1 checklist.
+In game: `//schem list`, `//schem load img2schem_cube`, stand where the build should go **facing south**,
+`//paste -a`. Expected: the front face 2 blocks in front of you, centered on you, with the bottom layer
+replacing the block you stand on (D-015). `//undo` removes it.
 
-## B3. Results
+- **Cube:** white wool face toward you, red wool face on your **right**, gold block at the top **left** corner
+  of the white face.
+- **House:** door in the middle of the facing wall; roof ridge running left–right with stairs rising toward
+  the ridge from both sides; windows are glass panes connected in pairs.
+- **Modded:** lower ring of stone-brick stairs rising toward the center; upper ring of your modded stairs,
+  the row nearest you upside-down; modded pillar in the middle.
+- No errors in chat or `logs/fml-client-latest.log` (a "Missing ID mapping" line means a name isn't registered).
+- Block counts match `img2schem inspect`.
+
+Then `//copy` + `//schem save reread` a pasted build and run `img2schem inspect` on the saved file: names
+should be resolved (not `id:<n>`) and the counts should match.
+
+## Results
 
 ### Phase 0
 
-| Check | Modded SP | Paper + FAWE | Paper + WE |
-|---|---|---|---|
-| Versions (MC / loader / WorldEdit) | | | |
-| `img2schem_cube` orientation + offset | | | |
-| `img2schem_house` pastes cleanly | | | |
-| `img2schem_modded` pastes cleanly | | n/a | n/a |
-| Partial states accepted (D-002) | | | |
-| `inspect` on a WorldEdit-saved file | | | |
-| Previews match the paste | | | |
+| Check | Result / notes |
+|---|---|
+| Versions (GTNH / Forge / WorldEdit) | GTNH 2.9.0-beta-1 / Forge 10.13.4.1614 / WorldEdit 6.3.0 (Prism, Java 25) |
+| `instance list` shows WorldEdit = yes | ✅ |
+| `world use` lists blocks per mod | ✅ 4357 blocks, 150 mods (`New World (1)`) |
+| `img2schem_cube` orientation + offset | ✅ white toward player, red on the right, gold top-left |
+| `img2schem_house`: stairs, door, panes | ✅ paste at (257,106,−125): front wall z=−123, x=247..266, door at (257,107,−123) meta 3; floor at the player's feet level (since changed to one block lower, D-015) |
+| `img2schem_modded` pastes cleanly | ✅ `chisel:aluminum_stairs.1` + `chisel:woolen_clay`: both stair rings rise toward the center; only the north aluminum row upside-down, as designed |
+| No "Missing ID mapping" / errors in chat | ✅ |
+| `inspect` on a WorldEdit-saved file | ✅ `reread.schematic`: names resolved, WEOrigin (247,106,−123) = house min corner |
+| Previews match the paste | ✅ |
+
+### Phase 1 (in progress) — engine and template, owner's GTNH world
+
+| Check | Result / notes |
+|---|---|
+| `examples/house.ops.json` (gable 1:1, logs, belt course, door) | ✅ pasted correctly |
+| `examples/cottage.ops.json` (palette families, hip roof, porch in `keep` mode, chimney) | ✅ pasted correctly |
+| `examples/brick_house.spec.json` via `compile SPEC.json` | ✅ after D-022 (flush windows; rebuilds replace img2schem's own file) |
+| Spec edits (storeys, roof type) take effect on recompile | ✅ after D-022 |
+| 1-storey variant keeps both door halves | ✅ after D-023 (a window had replaced the door's upper half) |
+| `examples/tower.ops.json` (loft/sweep curves, 109 tall, ~26k blocks) | ✅ pasted correctly; a basis to refine for usability and detail (D-026) |
+| Tower detail pass (D-027): smoothed blades, mullions, lights, spiral stair to the roof, terrace doors facing east | ⏳ to check in game: stair directions on the blades, walking up the spiral, terrace doors open outward and stay on, no mobs inside at night |
+| `examples/courtyard.ops.json` (D-029): one kiosk placed four ways, mirrored doors, varied paving, fence | ⏳ to check in game: each door faces the center and opens, roofs intact, mossy bricks scattered, gap in the north fence |
+| First live `img2schem design` run (D-031, D-032) | ✅ ran: watchtower, 5 turns, $0.33 on Opus 5.5 (in-game check pending); it found the roof's sealing ring on an open lookout -> `seal: false` |
+| First live `img2schem edit` + `undo` (D-033) | ✅ edit ran: "remove the ring of stone bricks at the eaves" -> Claude set the roof's `seal: false`, 2 turns, $0.18, 776 -> 744 blocks (exactly the 32-block ring); undo and in-game check pending |
+| First photo design with critique (D-034): the owner's three modern houses | house 2 ✅ (prompt v1) 15 turns, $0.84 with 2 critique passes; massing, garage wing, dark tower element match; mirrored at first, critique pass 1 fixed it with 30 replace_ops (-> D-035); house 3 ✅ (prompt v2) right way round from the start, 21 turns, $0.77: 3-car garage with stone piers, roof deck with glass railing, white main block under a deep hip eave, stone west wing; its 4 "roof holes" were a validator false positive (-> D-036); house 1 ⏳ |
+
+### Phase 2 — Claude designer (closed by the owner 2026-09-25, D-037)
+
+| Check | Result / notes |
+|---|---|
+| Text -> build, photo -> build with critique, edits with undo | ✅ watchtower $0.33, edit $0.18, house 2 $0.84, house 3 $0.77 (Opus 5.5) |
+| Real sessions as replay tests | ✅ watchtower, house 2 (critique fixed a mirror), house 3 (prompt v2) |
+| Deferred to Phase 4 | S2 measured spec from rectified photos, design result cache (RD.6), 20-instruction edit script |
+
+### Phase 3 — Web UI (in progress)
+
+| Check | Result / notes |
+|---|---|
+| `img2schem serve --open`: builds list, 3D view, ops editor, design/revise with live progress, undo/redo, export (D-038) | ⏳ owner: first run on the owner's machine |
+

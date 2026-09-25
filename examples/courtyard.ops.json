@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "style": {
+  "paving": "minecraft:stonebrick",
+  "moss": "minecraft:stonebrick@1",
+  "floor": "minecraft:planks@1",
+  "wall": "minecraft:planks",
+  "roof": "minecraft:brick_block",
+  "roof.stairs": "minecraft:brick_stairs",
+  "glass": "minecraft:glass_pane",
+  "door": "minecraft:wooden_door",
+  "fence": "minecraft:fence"
+ },
+ "ops": [
+  {"op": "box", "id": "paving", "label": "Courtyard paving", "from": [-13, 0, -13], "to": [13, 0, 13], "mat": "$paving"},
+  {"op": "vary", "id": "paving-moss", "label": "Mossy bricks here and there", "target": "paving", "mat": "$moss", "ratio": 0.15, "seed": 7},
+  {"op": "define", "id": "kiosk-def", "label": "Kiosk: 5 x 5, door in the north wall, hip roof", "name": "kiosk", "ops": [
+   {"op": "floors", "id": "floor", "footprint": {"x0": 0, "z0": 0, "x1": 4, "z1": 4}, "ys": [0], "mat": "$floor"},
+   {"op": "walls", "id": "walls", "footprint": {"x0": 0, "z0": 0, "x1": 4, "z1": 4}, "y0": 1, "height": 3},
+   {"op": "window", "id": "win-left", "footprint": {"x0": 0, "z0": 0, "x1": 4, "z1": 4}, "face": "left", "u0": 2, "u1": 2, "y0": 2, "y1": 2},
+   {"op": "window", "id": "win-right", "footprint": {"x0": 0, "z0": 0, "x1": 4, "z1": 4}, "face": "right", "u0": 2, "u1": 2, "y0": 2, "y1": 2},
+   {"op": "door", "id": "door", "pos": [2, 1, 0], "facing": "north"},
+   {"op": "roof", "id": "roof", "footprint": {"x0": 0, "z0": 0, "x1": 4, "z1": 4}, "y0": 4, "type": "hip", "pitch": "1:1", "overhang": 1}
+  ]},
+  {"op": "place", "id": "kiosk-s", "label": "South kiosk, door facing the center (north)", "name": "kiosk", "pos": [-2, 0, 8]},
+  {"op": "place", "id": "kiosk-n", "label": "North kiosk, turned 180: door faces south", "name": "kiosk", "pos": [2, 0, -8], "rotate": 180},
+  {"op": "place", "id": "kiosk-w", "label": "West kiosk, turned 90: door faces east", "name": "kiosk", "pos": [-8, 0, -2], "rotate": 90},
+  {"op": "mirror", "id": "kiosk-e", "label": "East kiosk: the west one mirrored, door faces west", "ops": ["kiosk-w"], "axis": "x", "plane": 0.5},
+  {"op": "railing", "id": "fence", "label": "Fence around the courtyard", "path": [[-13, -13], [13, -13], [13, 13], [-13, 13]], "y": 1, "mat": "$fence", "closed": true},
+  {"op": "carve", "id": "gate", "label": "Opening in the north fence", "from": [-1, 1, -13], "to": [1, 1, -13]}
+ ]
+}

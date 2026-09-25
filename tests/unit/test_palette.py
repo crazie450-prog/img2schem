@@ -1,86 +1,142 @@
-import json
-import time
+import numpy as np
+import pytest
+from fixtures.jars.make import nei_dumps
 
-from img2schem.instance.discover import discover_curseforge, discover_vanilla
-from img2schem.palette.build import build_palette, extract
-
-
-def _fabric(launchers):
-    return next(i for i in discover_vanilla(launchers["vanilla"][0]) if i.loader == "fabric")
+from img2schem.palette.nei import CUBE_IOU, classify, cube_outline_iou, exclude_patterns, icon_filename_base, import_nei
+from img2schem.util.color import srgb_to_lab
 
 
-def test_shapes_and_properties(launchers):
-    pal, report = extract(_fabric(launchers))
-    b = pal.blocks
-    expected = {
-        "minecraft:bricks": "full_cube",
-        "minecraft:oak_log": "column",
-        "minecraft:oak_stairs": "stairs",
-        "minecraft:stone_slab": "slab",
-        "minecraft:cobblestone_wall": "wall",
-        "minecraft:oak_fence": "fence",
-        "minecraft:oak_fence_gate": "fence_gate",
-        "minecraft:glass_pane": "pane",
-        "minecraft:oak_door": "door",
-        "minecraft:oak_trapdoor": "trapdoor",
-        "fabdeco:slate_shingles": "full_cube",
-        "fabdeco:slate_shingle_stairs": "stairs",
-        "fabnested:inner_block": "full_cube",  # jar-in-jar
-    }
-    assert {k: b[k].shape for k in expected} == expected
-    assert b["minecraft:oak_stairs"].properties == {
-        "facing": ["east", "north", "south", "west"],
-        "half": ["bottom", "top"],
-        "shape": ["inner_left", "inner_right", "outer_left", "outer_right", "straight"],
-    }
-    assert b["minecraft:cobblestone_wall"].properties == {
-        "east": ["low"],
-        "north": ["low", "tall"],
-        "up": ["true"],
-        "west": ["tall"],
-    }
-    assert b["fabdeco:slate_shingle_stairs"].source == "fabdeco-2.1.0.jar"
-    assert b["fabnested:inner_block"].source.endswith("META-INF/jars/fabnested-1.0.jar")
+@pytest.fixture
+def pal(tmp_path):
+    return import_nei(nei_dumps(tmp_path / "dumps"))
 
 
-def test_resource_pack_overrides_but_cannot_add(launchers):
-    pal, _ = extract(_fabric(launchers))
-    assert pal.blocks["minecraft:stone"].shape == "column"  # the pack's model wins
-    assert "minecraft:not_a_block" not in pal.blocks
+def test_icons_linked_in_panel_order(pal):
+    wool = {v.meta: v for v in pal.blocks["minecraft:wool"].variants}
+    assert set(wool) == {0, 14}  # the NBT row is skipped
+    assert wool[0].rgb == (240, 240, 240) and wool[14].rgb == (160, 40, 35)
+    stairs = {v.meta: v.rgb for v in pal.blocks["chisel:aluminum_stairs.1"].variants}
+    assert stairs == {0: (130, 130, 130), 8: (110, 110, 110)}  # icons _2/_3: Galacticraft's row came first
 
 
-def test_code_rendered_and_malformed(launchers):
-    pal, report = extract(_fabric(launchers))
-    assert "fabdeco:statue" in report.code_rendered  # builtin/entity parent
-    assert "minecraft:chest" in report.code_rendered  # model without elements
-    assert "fabdeco:broken" not in pal.blocks
-    assert any("broken.json" in e["file"] for e in report.parse_errors)
-    assert report.blocks_per_mod["fabdeco"] == 3
+def test_colon_names_ambiguous_names_and_big_meta(pal):
+    (brain,) = pal.blocks["Automagy:crystalBrain"].variants
+    assert brain.rgb == (5, 5, 5) and brain.flags == ["dark_icon"]
+    machine = pal.blocks["gregtech:gt.blockmachines"]
+    assert [v.meta for v in machine.variants] == [1, 2]  # meta 1086 is not block metadata
+    assert all(v.rgb is None for v in machine.variants)  # 2 rows, 1 icon -> no reliable color
 
 
-def test_neoforge_jarjar(launchers):
-    (inst,) = discover_curseforge(launchers["curseforge"][0])
-    pal, _ = extract(inst)
-    assert pal.blocks["neomasonry:plaster"].shape == "full_cube"
-    assert pal.blocks["neolib:lib_block"].source.endswith("META-INF/jarjar/neolib-0.3.jar")
+def test_color_lookup_strips_orientation_bits(pal):
+    assert pal.color("chisel:aluminum_stairs.1@3") == (130, 130, 130)  # variant 0, facing north
+    assert pal.color("chisel:aluminum_stairs.1@14") == (110, 110, 110)  # variant 8, upside-down
+    assert pal.color("minecraft:stone_slab@9") == (215, 205, 150)  # top-half sandstone slab
+    assert pal.color("minecraft:wool@3") == (240, 240, 240)  # unknown variant falls back to meta 0
+    assert pal.color("create:nothing") is None
 
 
-def test_validate_state(launchers):
-    pal, _ = extract(_fabric(launchers))
-    assert pal.validate_state("minecraft:oak_stairs[facing=north,half=top,shape=outer_left]") is None
-    assert pal.validate_state("minecraft:oak_stairs[facing=north,waterlogged=false]") is None
-    assert pal.validate_state("minecraft:air") is None
-    assert "not in" in (pal.validate_state("minecraft:oak_stairs[facing=up]") or "")
-    assert "unknown property" in (pal.validate_state("minecraft:bricks[color=red]") or "")
-    assert "unknown block" in (pal.validate_state("create:nothing") or "")
+def test_shapes(pal):
+    shapes = {n: b.shape for n, b in pal.blocks.items()}
+    assert shapes["chisel:aluminum_stairs.1"] == "stairs"
+    assert shapes["minecraft:stone_slab"] == "slab"
+    assert shapes["malisisdoors:jungleFenceGate"] == "fence_gate"  # mod id "malisisdoors" is not a door
+    assert shapes["modernmarkings:wall_arrow"] == "unknown"  # a floor marking, not a wall
+    assert "minecraft:air" not in pal.blocks
 
 
-def test_cache_hit(launchers, tmp_path):
-    inst = _fabric(launchers)
-    pal, d, hit = build_palette(inst, tmp_path / "cache")
-    assert not hit and (d / "palette_report.json").is_file()
-    t = time.perf_counter()
-    pal2, d2, hit2 = build_palette(inst, tmp_path / "cache")
-    assert hit2 and d2 == d and time.perf_counter() - t < 2
-    assert pal2.blocks.keys() == pal.blocks.keys()
-    assert json.loads((d / "palette_report.json").read_text())["blocks_per_shape"]["stairs"] == 3
+@pytest.mark.parametrize(
+    ("cls", "name", "shape"),
+    [
+        ("net.minecraft.block.BlockStairs", "minecraft:oak_stairs", "stairs"),
+        ("net.minecraft.block.BlockStoneSlab", "minecraft:double_stone_slab", "full_cube"),
+        ("net.minecraft.block.BlockWall", "minecraft:cobblestone_wall", "wall"),
+        ("net.minecraft.block.BlockPane", "minecraft:glass_pane", "pane"),
+        ("net.minecraft.block.BlockPane", "minecraft:iron_bars", "pane"),
+        ("x.BlockAdvSolarPanel", "AdvancedSolarPanel:BlockAdvSolarPanel", "unknown"),
+        ("net.minecraft.block.BlockDoor", "minecraft:wooden_door", "door"),
+        ("net.minecraft.block.BlockTrapDoor", "minecraft:trapdoor", "trapdoor"),
+        ("net.minecraft.block.BlockOldLog", "minecraft:log", "log"),
+        ("team.chisel.block.BlockCarvable", "chisel:marble_pillar", "full_cube"),
+        ("x.BlockCasings1", "gregtech:gt.blockcasings", "unknown"),
+    ],
+)
+def test_classify(cls, name, shape):
+    assert classify(cls, name) == shape
+
+
+def test_icon_filename_base():
+    assert icon_filename_base("Crystalline Brain: Air") == "Crystalline Brain_ Air"
+    assert icon_filename_base("α Centauri Bb Stone Dust") == "α Centauri Bb Stone Dust"  # non-ASCII kept
+
+
+def test_non_ascii_icon_names(pal):
+    (iszm,) = pal.blocks["Ztones:tile.iszm"].variants
+    assert iszm.rgb == (40, 120, 200) and iszm.flags == []
+
+
+def test_infested_only_when_a_normal_counterpart_exists(pal):
+    eggs = {v.meta: v for v in pal.blocks["minecraft:monster_egg"].variants}
+    assert eggs[2].flags == ["infested"]  # "Stone Bricks" exists
+    assert eggs[5].flags == []  # no plain "Chiseled Quartz" in this palette: stays usable
+    assert [v.meta for v in pal.blocks["minecraft:monster_egg"].usable()] == [5]
+
+
+def test_lab_reference_values():
+    lab = srgb_to_lab(np.array([[255, 255, 255], [0, 0, 0], [255, 0, 0]]))
+    assert np.allclose(lab[0], [100, 0, 0], atol=0.05) and np.allclose(lab[1], [0, 0, 0], atol=0.05)
+    assert np.allclose(lab[2], [53.24, 80.09, 67.20], atol=0.05)
+
+
+def test_cube_outline_and_exclusions(pal, tmp_path):
+    bricks = pal.blocks["ExtraUtilities:colorStoneBrick"]
+    anchor = pal.blocks["Railcraft:machine.alpha"]
+    assert bricks.shape == anchor.shape == "full_cube"  # unknown class, but the icon has the cube outline
+    assert [v.block for v in bricks.usable()] == ["ExtraUtilities:colorStoneBrick"]
+    assert anchor.variants[0].flags == ["excluded"] and anchor.usable() == []
+    assert pal.blocks["gregtech:gt.blockmachines"].shape == "unknown"  # no icons -> stays unknown
+    assert cube_outline_iou(tmp_path / "dumps" / "itempanel_icons" / "Red Wool.png") < CUBE_IOU  # a flat square
+
+
+@pytest.mark.parametrize(
+    ("text", "excluded"),
+    [
+        ("BlockColored Light Gray Wool", False),
+        ("BlockSandStone Sandstone", False),
+        ("BlockCarvable Stable Bricks", False),
+        ("BlockStorage Crystalline Alloy Block", False),
+        ("BlockBeaconBase Block of Aluminum", False),
+        ("BlockSand Sand", True),
+        ("BlockDrawersPack Larch Drawer", True),
+        ("BaseSubtypesBlock White Concrete Powder", True),
+        ("BlockOre Silicon Ore", True),
+        ("BlockMachine Item Loader", True),
+        ("x Growth Acceleration Unit (IV)", True),
+    ],
+)
+def test_exclude_patterns(text, excluded):
+    assert bool(exclude_patterns().search(text)) is excluded
+
+
+def test_metadata_that_cannot_be_material_is_nbt_variant(pal):
+    larch, lime = pal.blocks["Forestry:stairs"].variants
+    assert larch.flags == [] and lime.flags == ["nbt_variant"]  # stairs carry material only in 0/8
+
+
+def test_chisel_slabs_with_a_top_block_use_all_16_metas(pal):
+    slab = pal.blocks["chisel:marble_slab"]
+    assert slab.top_block == "chisel:marble_slab_top"
+    assert [v.meta for v in slab.usable()] == [0, 9]
+    assert pal.color("chisel:marble_slab@9") == (180, 180, 185)  # meta 9 is a material, not "top of 1"
+    assert pal.color("minecraft:stone_slab@13") == pal.color("minecraft:stone_slab@5")  # vanilla: 8 = top
+
+
+def test_families(pal):
+    from img2schem.palette.query import PaletteIndex, stem
+
+    assert stem("Stone Bricks") == stem("Stone Brick Stairs") == stem("Stone Bricks Slab") == "stone brick"
+    assert stem("Larch Wood Planks (Fireproof)") == stem("Larch Stairs") == "larch"
+    assert stem("Block of Quartz") == stem("Quartz Slab") == "quartz"
+    fam = PaletteIndex(pal).family("minecraft:stonebrick")
+    assert fam["stairs"] == "minecraft:stone_brick_stairs" and fam["slab"] == "minecraft:stone_slab@5"
+    assert fam["wall"] is None
+    assert PaletteIndex(pal).family("minecraft:monster_egg@2") == dict.fromkeys(fam)  # infested: not usable

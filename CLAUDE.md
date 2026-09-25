@@ -1,9 +1,11 @@
 # img2schem
 
-Photo/description → Claude-designed build (ops) → deterministic engine → WorldEdit `.schem` (Minecraft Java),
-using the owner's real installed palette including mods. Python 3.11+ core, CLI-first; local web UI from Phase 3.
+Photo/description → Claude-designed build (ops) → deterministic engine → WorldEdit `.schematic` for
+**GT New Horizons (Minecraft 1.7.10, WorldEdit 6.3.0)**, using the owner's installed blocks including mods.
+Python 3.11+ core, CLI-first; local web UI from Phase 3.
 
 ## Read first
+- docs/SOW_GTNH.md — the 1.7.10 re-scope. **Governs over SOW.md where they conflict.**
 - docs/SOW.md — full spec and phased plan. Follow §0 rules and §7 phase gates.
 - docs/DSL.md — the ops language (also Claude's system-prompt reference). Change ops only via engine/ops.py.
 - docs/DECISIONS.md — log every deviation from the SOW (context → decision → consequences).
@@ -12,15 +14,19 @@ using the owner's real installed palette including mods. Python 3.11+ core, CLI-
 ## Conventions
 - Arrays are [X, Y, Z], Y up; front facade at z=0 facing −Z (north). SOW §4.3.
 - Every stage writes an artifact to the run dir and can be re-run from the previous artifact. The UI calls the same stages.
-- Block states are modern strings. Never numeric IDs. Never legacy `.schematic`.
-- Block IDs come only from the extracted palette (active instance) or palette/data/tiers.yaml. Never hard-code others.
+- Blocks are `modid:name@meta` (Forge registry name + metadata 0–15). Never numeric world IDs in artifacts;
+  `.schematic` files carry a `SchematicaMapping` and WorldEdit remaps names on load (stages/export_schem.py).
+- Output is MCEdit `.schematic` only (the one format WorldEdit 6.3.0 reads). No Sponge `.schem`.
+- Block names come only from the selected world's registry (level.dat), the NEI-imported palette, or curated
+  data files. Never hard-code others. Icons/palette.json stay in the local cache (SOW C16).
 - Claude writes ops, not blocks (`set` capped). Tool schemas are generated from engine/ops.py.
 - Model IDs and prices live in config.yaml / pricing.yaml only.
 - Secrets only via env vars. Never commit .env, extracted textures, atlases, or owner photos > 1 MB.
 
 ## Commands
 - `pip install -e ".[dev,vlm,server]"`; `pytest -q`; `pytest -m replay`; `ruff check .`; `mypy img2schem`
-- `img2schem instance list` · `img2schem palette build` · `img2schem palette report`
+- `img2schem instance list` · `img2schem world use NAME` · `img2schem palette import DUMPS` · `img2schem palette search TEXT`
+- `img2schem doctor` · `python examples/make_test_grids.py`
 - `img2schem convert tests/fixtures/photos/example.jpg --designer template --out out/dev`
 - `img2schem serve --open` (Phase 3+) · web: `cd web && npm i && npm run dev`
 - External tests: `IMG2SCHEM_RUN_EXTERNAL=1 pytest -m external`

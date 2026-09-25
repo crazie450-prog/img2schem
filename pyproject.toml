@@ -5,12 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "img2schem"
 version = "0.0.1"
-description = "Photo or description of a building -> Claude-designed build -> WorldEdit .schem, using your installed (modded) block palette"
+description = "Photo or description of a building -> Claude-designed build -> WorldEdit .schematic for GT New Horizons (Minecraft 1.7.10)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary; personal use" }
 dependencies = [
     "numpy>=1.26",
+    "scipy>=1.11",
+    "opencv-python-headless>=4.8",
     "Pillow>=10",
     "pydantic>=2.5",
     "pyyaml>=6",
@@ -20,9 +22,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-vlm = ["anthropic"]
-server = ["fastapi", "uvicorn"]
-dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
+vlm = ["anthropic>=1.8"]
+server = ["fastapi>=0.115", "uvicorn>=0.30"]
+dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "httpx"]
 
 [project.scripts]
 img2schem = "img2schem.cli:app"
@@ -30,8 +32,11 @@ img2schem = "img2schem.cli:app"
 [tool.setuptools.packages.find]
 include = ["img2schem*"]
 
+
 [tool.setuptools.package-data]
 "img2schem.palette" = ["data/*.yaml"]
+"img2schem.designer" = ["data/*.yaml", "prompts/*.md"]
+"img2schem.server" = ["static/*", "static/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

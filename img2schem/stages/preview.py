@@ -1,6 +1,6 @@
 """S7 previews (R9.1, Phase 0 subset): orthographic front/side/top + isometric PNGs, PIL only.
 
-Phase 0 colors each block id with a flat hash color; palette face colors replace this in Phase 1.
+Blocks are colored from the palette (NEI icon colors) when one is given, else with a flat hash color.
 Views follow the in-game orientation (SOW §4.3):
   front: seen from the north (-Z) looking south, so east (+X) is on the image's LEFT;
   side:  seen from the west (-X) looking east, so south (+Z) is on the RIGHT;
@@ -16,25 +16,24 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from img2schem.models import BlockGrid
-from img2schem.util.blockstate import parse_state
+from img2schem.engine.materials import guess_shape
+from img2schem.models import BlockGrid, Palette
+from img2schem.util.block import parse_block
 
 BG = (246, 246, 244)
 SHADE = {"top": 1.0, "front": 0.85, "side": 0.7}
 
 
-def block_color(state: str) -> tuple[int, int, int]:
-    try:
-        block_id, _ = parse_state(state)
-    except ValueError:
-        block_id = state
-    d = hashlib.md5(block_id.encode()).digest()
+def block_color(block: str) -> tuple[int, int, int]:
+    """Flat color per block name and metadata (``minecraft:wool@0`` and ``@14`` differ)."""
+    d = hashlib.md5(block.encode()).digest()
     # Pull toward mid-gray so hash colors stay readable.
     return tuple(int(60 + b * 0.6) for b in d[:3])  # type: ignore[return-value]
 
 
-def _palette_rgb(grid: BlockGrid) -> np.ndarray:
-    return np.array([BG] + [block_color(s) for s in grid.palette[1:]], dtype=np.float32)
+def _palette_rgb(grid: BlockGrid, palette: Palette | None = None) -> np.ndarray:
+    colors = [(palette.color(b) if palette else None) or block_color(b) for b in grid.palette[1:]]
+    return np.array([BG, *colors], dtype=np.float32)
 
 
 def _first_hit(idx: np.ndarray, axis: int) -> np.ndarray:
@@ -58,37 +57,72 @@ def _to_image(cells: np.ndarray, rgb: np.ndarray, shade: float, px: int) -> Imag
     return Image.fromarray(np.clip(big, 0, 255).astype(np.uint8))
 
 
-def render_front(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_front(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx, axis=2)  # [X, Y]
-    return _to_image(cells[::-1, ::-1].T, _palette_rgb(grid), SHADE["front"], px)
+    return _to_image(cells[::-1, ::-1].T, _palette_rgb(grid, palette), SHADE["front"], px)
 
 
-def render_side(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_side(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx, axis=0)  # [Y, Z]
-    return _to_image(cells[::-1, :], _palette_rgb(grid), SHADE["side"], px)
+    return _to_image(cells[::-1, :], _palette_rgb(grid, palette), SHADE["side"], px)
 
 
-def render_top(grid: BlockGrid, px: int = 8) -> Image.Image:
+def render_top(grid: BlockGrid, px: int = 8, palette: Palette | None = None) -> Image.Image:
     cells = _first_hit(grid.idx[:, ::-1, :], axis=1)  # [X, Z], scanning down from the top
-    return _to_image(cells.T, _palette_rgb(grid), SHADE["top"], px)
+    return _to_image(cells.T, _palette_rgb(grid, palette), SHADE["top"], px)
 
 
-def render_iso(grid: BlockGrid, px: int = 8) -> Image.Image:
-    """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower)."""
+Box = tuple[float, float, float, float, float, float]  # x0, y0, z0, x1, y1, z1 within a unit cell
+STAIR_BACK: dict[int, Box] = {0: (0.5, 0, 0, 1, 1, 1), 1: (0, 0, 0, 0.5, 1, 1), 2: (0, 0, 0.5, 1, 1, 1),
+                              3: (0, 0, 0, 1, 1, 0.5)}  # fmt: skip
+
+
+def block_parts(block: str, palette: Palette | None = None) -> list[Box] | None:
+    """The boxes a partial block is drawn as (stairs, slabs); None for a full cube."""
+    if block == "minecraft:air":
+        return None
+    name, meta = parse_block(block)
+    blk = palette.blocks.get(name) if palette else None
+    shape = blk.shape if blk else guess_shape(name)
+    if shape == "slab":
+        top = name.endswith("_top") or (meta & 8 and not (blk and blk.top_block))
+        return [(0, 0.5, 0, 1, 1, 1)] if top else [(0, 0, 0, 1, 0.5, 1)]
+    if shape == "stairs":
+        down = bool(meta & 4)
+        bx0, _, bz0, bx1, _, bz1 = STAIR_BACK[meta & 3]
+        half = (0, 0.5, 0, 1, 1, 1) if down else (0, 0, 0, 1, 0.5, 1)
+        back = (bx0, 0, bz0, bx1, 0.5, bz1) if down else (bx0, 0.5, bz0, bx1, 1, bz1)
+        return [half, back]
+    return None
+
+
+def render_iso(
+    grid: BlockGrid, px: int = 8, palette: Palette | None = None, colors: np.ndarray | None = None
+) -> Image.Image:
+    """Painter's algorithm over exposed faces. Screen u = (z - x), v = -(x + z)/2 - y (nearer = lower).
+    Stairs and slabs are drawn as their boxes (not with ``colors``, the debug view)."""
     idx = grid.idx
     xs, ys, zs = idx.shape
-    rgb = _palette_rgb(grid)
+    rgb = _palette_rgb(grid, palette) if colors is None else colors
+    parts = [None if colors is not None else block_parts(b, palette) for b in grid.palette]
     s = px
-    pad = np.pad(idx != 0, 1)
+    partial = np.array([p is not None for p in parts])[idx]
+    pad = np.pad((idx != 0) & ~partial, 1)
     solid = pad[1:-1, 1:-1, 1:-1]
     top = solid & ~pad[1:-1, 2:, 1:-1]
     north = solid & ~pad[1:-1, 1:-1, :-2]
     west = solid & ~pad[:-2, 1:-1, 1:-1]
-    cells = np.argwhere(top | north | west)
-    if len(cells) == 0:
+    boxes: list[tuple[float, int, Box, bool, bool, bool]] = []  # depth, palette index, box, faces to draw
+    for x, y, z in np.argwhere(top | north | west).tolist():
+        boxes.append((x + z - y, idx[x, y, z], (x, y, z, x + 1, y + 1, z + 1), top[x, y, z], north[x, y, z],
+                      west[x, y, z]))  # fmt: skip
+    for x, y, z in np.argwhere(partial).tolist():
+        for x0, y0, z0, x1, y1, z1 in parts[idx[x, y, z]] or []:
+            depth = x + z - y + (x0 + x1 + z0 + z1 - y0 - y1) / 2 - 0.5
+            boxes.append((depth, idx[x, y, z], (x + x0, y + y0, z + z0, x + x1, y + y1, z + z1), True, True, True))
+    if not boxes:
         return Image.new("RGB", (4 * s, 4 * s), BG)
-    order = np.argsort(-(cells[:, 0] + cells[:, 2] - cells[:, 1]), kind="stable")
-    cells = cells[order]
+    boxes.sort(key=lambda b: -b[0])
 
     ox = xs * s + s
     oy = (xs + zs) * s / 2 + ys * s + s
@@ -100,15 +134,15 @@ def render_iso(grid: BlockGrid, px: int = 8) -> Image.Image:
     def pt(x: float, y: float, z: float) -> tuple[float, float]:
         return (ox + (z - x) * s, oy - (x + z) * s / 2 - y * s)
 
-    for x, y, z in cells.tolist():
-        base = rgb[idx[x, y, z]]
+    for _, i, (x0, y0, z0, x1, y1, z1), t, n, wst in boxes:
+        base = rgb[i]
         faces = []
-        if top[x, y, z]:
-            faces.append(("top", [pt(x, y + 1, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)]))
-        if north[x, y, z]:
-            faces.append(("front", [pt(x, y, z), pt(x + 1, y, z), pt(x + 1, y + 1, z), pt(x, y + 1, z)]))
-        if west[x, y, z]:
-            faces.append(("side", [pt(x, y, z), pt(x, y, z + 1), pt(x, y + 1, z + 1), pt(x, y + 1, z)]))
+        if t:
+            faces.append(("top", [pt(x0, y1, z0), pt(x1, y1, z0), pt(x1, y1, z1), pt(x0, y1, z1)]))
+        if n:
+            faces.append(("front", [pt(x0, y0, z0), pt(x1, y0, z0), pt(x1, y1, z0), pt(x0, y1, z0)]))
+        if wst:
+            faces.append(("side", [pt(x0, y0, z0), pt(x0, y0, z1), pt(x0, y1, z1), pt(x0, y1, z0)]))
         for kind, poly in faces:
             c = tuple(int(v) for v in base * SHADE[kind])
             edge = tuple(int(v * 0.8) for v in c)
@@ -116,11 +150,30 @@ def render_iso(grid: BlockGrid, px: int = 8) -> Image.Image:
     return img
 
 
-def write_previews(grid: BlockGrid, out_dir: Path, px: int = 8) -> list[Path]:
+def write_previews(grid: BlockGrid, out_dir: Path, px: int = 8, palette: Palette | None = None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for name, fn in (("front", render_front), ("side", render_side), ("top", render_top), ("iso", render_iso)):
         p = out_dir / f"preview_{name}.png"
-        fn(grid, px).save(p)
+        fn(grid, px, palette).save(p)
         paths.append(p)
     return paths
+
+
+def render_debug_ops(grid: BlockGrid, op_index: np.ndarray, op_names: list[str], px: int = 8) -> Image.Image:
+    """R9.4: iso view with every op's cells in its own color, plus a legend (for review and critique)."""
+    ops_grid = BlockGrid(np.where(grid.idx != 0, op_index + 1, 0), ["minecraft:air", *op_names])
+    colors = np.array([BG] + [block_color(f"op:{n}") for n in op_names], dtype=np.float32)
+    iso = render_iso(ops_grid, px, colors=colors)
+    used = [i for i in range(len(op_names)) if (ops_grid.idx == i + 1).any()]
+    line = 14
+    legend_w = 12 + max((len(op_names[i]) for i in used), default=0) * 7
+    img = Image.new("RGB", (iso.width + legend_w, max(iso.height, 8 + line * len(used))), BG)
+    img.paste(iso, (0, 0))
+    draw = ImageDraw.Draw(img)
+    for row, i in enumerate(used):
+        y = 4 + row * line
+        c = tuple(int(v) for v in colors[i + 1])
+        draw.rectangle([iso.width, y, iso.width + 9, y + 9], fill=c, outline=(80, 80, 80))
+        draw.text((iso.width + 13, y - 1), op_names[i], fill=(40, 40, 40))
+    return img
