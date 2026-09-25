@@ -126,6 +126,8 @@ def _seal(op: Roof, b: _Blocks, cells: list[Cell]) -> list[Cell]:
     """Close the roof onto the walls: every column on the footprint's wall line is filled with ``gable_fill``
     from ``y0`` up to just below its lowest roof block. This makes the gable triangles and a shed's tall wall,
     and with an overhang it closes the slot between the wall top and the first course over the wall."""
+    if not op.seal:
+        return cells
     fp = op.footprint
     lowest: dict[tuple[int, int], int] = {}
     for x, y, z, _, _ in cells:

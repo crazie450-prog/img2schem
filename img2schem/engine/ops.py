@@ -347,7 +347,9 @@ class Roof(OpBase):
     - ``pitch``: ``1:1`` stairs, ``1:2`` alternating bottom/top slabs, ``2:1`` stairs over full blocks;
     - ``mat``: the full-block slot (e.g. ``$roof``); stairs and slabs come from ``<mat>.stairs`` / ``<mat>.slab``;
     - ``gable_fill``: fills the triangular gable ends (gable and shed roofs);
-    - ``parapet``: flat roofs only, a 1-block ring of ``mat`` around the edge.
+    - ``parapet``: flat roofs only, a 1-block ring of ``mat`` around the edge;
+    - ``seal``: fill the wall line below the roof with ``gable_fill`` (gable triangles, a shed's tall wall, the
+      slot under an overhang). Set false for a roof on posts over an open space (a pavilion or lookout).
     """
 
     op: Literal["roof"] = "roof"
@@ -361,6 +363,7 @@ class Roof(OpBase):
     mat: str = "$roof"
     gable_fill: str = "$wall"
     parapet: bool = False
+    seal: bool = True
 
 
 class Column(OpBase):

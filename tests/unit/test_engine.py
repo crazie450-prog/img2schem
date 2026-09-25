@@ -216,3 +216,15 @@ def test_deterministic_bytes(tmp_path):
     a = write_schematic(tmp_path / "a.schematic", compile_ops(doc).grid).read_bytes()
     b = write_schematic(tmp_path / "b.schematic", compile_ops(doc).grid).read_bytes()
     assert a == b
+
+
+def test_unsealed_roof_on_posts_leaves_the_wall_line_open():
+    from img2schem.engine.compiler import compile_ops as _c
+    from img2schem.engine.ops import OpsDoc as _D
+
+    style = {"roof": "minecraft:planks", "roof.stairs": "minecraft:oak_stairs", "wall": "minecraft:stonebrick"}
+    roof = {"op": "roof", "id": "r", "footprint": {"x0": 0, "z0": 0, "x1": 6, "z1": 6}, "y0": 5, "type": "hip"}
+    sealed = _c(_D.model_validate({"style": style, "ops": [roof]})).grid.counts()
+    open_ = _c(_D.model_validate({"style": style, "ops": [{**roof, "seal": False}]})).grid.counts()
+    assert sealed.get("minecraft:stonebrick", 0) > 0 and "minecraft:stonebrick" not in open_
+

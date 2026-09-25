@@ -53,7 +53,7 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 | `door` | `pos` (lower half), `facing`, `mat` (`$door`), `hinge` | two-block door; `facing` = the wall's outward side (`north` for the front wall). Carve the opening first if a wall is there |
 | `openings` | `footprint`, `face` (front/back/left/right), `sills`, `w`, `h`, `spacing`, `count`, `margin`, `mat` (`$glass`) | a centered row of equal windows at each sill height; `count: 0` fits as many as possible |
 | `window` | `footprint`, `face`, `u0`, `u1`, `y0`, `y1`, `recess` (0/1), `mat` (`$glass`) | one window; `u` runs along the face (x on front/back, z on sides); `recess: 1` sets the glass one block in |
-| `roof` | `footprint`, `y0`, `type`, `pitch`, `ridge`, `rise`, `overhang`, `mat` (`$roof`), `gable_fill` (`$wall`), `parapet` | see below |
+| `roof` | `footprint`, `y0`, `type`, `pitch`, `ridge`, `rise`, `overhang`, `mat` (`$roof`), `gable_fill` (`$wall`), `parapet`, `seal` | see below |
 | `column` | `pos` (x, z), `y0`, `height`, `mat` | vertical run; logs stand upright |
 | `beam` | `from`, `to` (one axis), `mat` | horizontal or vertical run; logs lie along it |
 | `trim_band` | `footprint`, `y`, `mat` (`$trim`), `outset` | 1-block ring (belt course, cornice) |
@@ -73,6 +73,8 @@ Every op has `id` (unique), `label` (human text), optional `group` and `note` (w
 
 `y0` is the height of the lowest course (usually the top of the walls + 1). The roof covers `footprint` plus
 `overhang` on every side, and stairs always rise toward the ridge.
+The wall line under the roof is filled with `gable_fill` (the gable triangles, a shed's tall wall, and the
+slot between the wall top and an overhang); set `seal: false` for a roof on posts over an open space.
 
 | `type` | Shape |
 |---|---|
