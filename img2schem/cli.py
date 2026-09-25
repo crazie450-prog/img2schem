@@ -6,9 +6,8 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
-from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -22,8 +21,7 @@ from img2schem.stages.export_schem import SchemInfo, mods_required, read_schemat
 from img2schem.util.block import namespace
 
 if TYPE_CHECKING:  # the designer (and the Anthropic SDK) load only when a command needs them
-    from img2schem.designer.session import DesignResult
-    from img2schem.designer.tools import DesignState
+    from img2schem.designer.runner import Callbacks, RunResult
 
 EXIT_VALIDATION = 2
 EXIT_BAD_INPUT = 4
@@ -424,15 +422,11 @@ def compile_cmd(
     Given a spec.json, plans it first (like `img2schem plan`) and compiles the resulting ops.json."""
     import time
 
-    from img2schem.engine.compiler import CompileError, compile_ops, paste_offset
+    from img2schem.engine.compiler import CompileError
     from img2schem.engine.ops import OpsDoc
-    from img2schem.palette.query import PaletteIndex
-    from img2schem.stages.export_schem import SchemMeta, copy_to_schematics_dir, write_schematic
-    from img2schem.stages.preview import render_debug_ops, write_previews
-    from img2schem.stages.validate import check_build, failed, write_issues
+    from img2schem.stages.build import BuildFailed, build_outputs
 
     s = load_settings()
-    t0 = time.perf_counter()
     pal = _load_palette()
     try:
         raw = json.loads(ops_file.read_text(encoding="utf-8"))
@@ -442,85 +436,29 @@ def compile_cmd(
         doc = OpsDoc.model_validate(raw)
     except (OSError, ValueError) as e:
         raise _fail(f"cannot read {ops_file}: {e}") from None
-    try:
-        compiled = compile_ops(doc, PaletteIndex(pal) if pal else None, s.budgets.hard_max_total)
-    except CompileError as e:
-        raise _fail(str(e), EXIT_VALIDATION) from None
-    t_compile = time.perf_counter() - t0
-
     name = name or ops_file.name.removesuffix(".json").removesuffix(".ops")
     out = out or Path("out") / f"{name}_{time.strftime('%Y%m%d-%H%M%S')}"
-    out.mkdir(parents=True, exist_ok=True)
-    grid = compiled.grid.compact()
-    issues = check_build(grid, compiled.labels, doc.style, s.budgets, pal, _active_palette())
-    write_issues(issues, out / "issues.json")
-    for i in issues:
+    inst = _active_instance(None) if s.instance else None
+    try:
+        built = build_outputs(doc, name, out, settings=s, palette=pal, world=_active_palette(), instance=inst,
+                              copy=copy, ops_file=ops_file)  # fmt: skip
+    except CompileError as e:
+        raise _fail(str(e), EXIT_VALIDATION) from None
+    except BuildFailed as e:
+        for i in e.issues:
+            console.print(f"{i.severity} {i.rule}: {i.message}")
+        raise _fail(str(e), EXIT_VALIDATION) from None
+    for i in built.issues:
         fix = " (fixed)" if i.autofix_applied else ""
         console.print(f"{i.severity} {i.rule}{fix}: {i.message}")
-    if failed(issues):
-        raise _fail("validation failed; see issues.json", EXIT_VALIDATION)
-
-    grid.save(out)
-    inst = _active_instance(None) if s.instance else None
-    meta = SchemMeta(
-        name, inst.name if inst else None, inst.mc_version if inst else None, inst.loader if inst else None
-    )
-    schem = write_schematic(out / f"{name}.schematic", grid, offset=paste_offset(compiled), meta=meta)
-    write_previews(grid, out, palette=pal)
-    render_debug_ops(grid, compiled.op_index, [o.id for o in doc.ops]).save(out / "debug_ops.png")
-    report = {
-        "name": name,
-        "ops_file": str(ops_file),
-        "dims_wxhxl": list(grid.shape),
-        "nonair": grid.nonair(),
-        "palette_size": len(grid.palette) - 1,
-        "mods_required": mods_required(grid.palette),
-        "ops_count": len(doc.ops),
-        "set_cells_used": sum(len(o.cells) for o in doc.ops if o.op == "set"),
-        "time_compile_s": round(t_compile, 3),
-        "validation": {
-            "ok": True,
-            "autofixes": sum(i.autofix_applied for i in issues),
-            "issues": [i.model_dump() for i in issues],
-        },
-        "ops": [vars(sm) for sm in compiled.summaries],
-        "counts": dict(sorted(grid.counts().items(), key=lambda kv: -kv[1])),
-    }
-    (out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
-    console.print(f"{schem}  ({grid.shape[0]}x{grid.shape[1]}x{grid.shape[2]}, {grid.nonair()} blocks)")
-    if copy and inst and inst.worldedit and inst.schematics_dir and s.export.write_to_instance:
-        target = copy_to_schematics_dir(schem, Path(inst.schematics_dir))
-        console.print(f"copied -> {target}   in game: //schem load {target.stem}   then //paste -a")
+    w, h, length = built.report["dims_wxhxl"]
+    console.print(f"{built.schematic}  ({w}x{h}x{length}, {built.report['nonair']} blocks)")
+    if built.copied_to:
+        console.print(f"copied -> {built.copied_to}   in game: //schem load {built.copied_to.stem}   then //paste -a")
 
 
-def _run_claude(state: DesignState, brief: str | list[dict[str, Any]], *, stage: str, name: str, out: Path,
-                budget: str, replay: Path | None, render: bool, record: dict[str, object],
-                critique: Callable[[int], list[dict[str, Any]]] | None = None,
-                critique_passes: int = 0) -> tuple[DesignResult, Path]:  # fmt: skip
-    """Run the designer on ``state`` (design or edit), keep what it built, write ops.json and design.json into
-    ``out``. Returns (DesignResult, ops path)."""
-    from img2schem.designer.prompt import PROMPT_VERSION, system_prompt
-    from img2schem.designer.session import run_design
-    from img2schem.designer.tools import tool_specs
-    from img2schem.designer.transport import LiveTransport, RecordingTransport, ReplayTransport, Transport
-
-    s = load_settings()
-    try:
-        limit = s.claude.budget(budget)
-    except ValueError as e:
-        raise _fail(str(e)) from None
-    out.mkdir(parents=True, exist_ok=True)
-    transport: Transport
-    if replay:
-        transport = ReplayTransport(replay)
-    else:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise _fail("ANTHROPIC_API_KEY is not set: copy .env.example to .env and fill it in")
-        try:
-            transport = RecordingTransport(LiveTransport(s.claude.fallback_model), out / "session.jsonl")
-        except ImportError:
-            raise _fail('the Anthropic SDK is not installed: pip install -e ".[vlm]"') from None
-    console.print(f"{stage} with {s.claude.model} (budget {budget}: warn ${limit.warn:.2f}, stop ${limit.stop:.2f})")
+def _callbacks() -> Callbacks:
+    from img2schem.designer.runner import Callbacks
 
     def progress(kind: str, text: str) -> None:
         if kind == "tool":
@@ -528,37 +466,30 @@ def _run_claude(state: DesignState, brief: str | list[dict[str, Any]], *, stage:
         elif kind == "text":
             console.print(text, end="", style="dim", markup=False, highlight=False)
 
-    def on_warning(msg: str) -> None:
-        console.print(f"[yellow]warning:[/yellow] {msg}")
-
-    ops_path = out / f"{name}.ops.json"
-    try:
-        result = run_design(state, brief, system_prompt(state.palette), tool_specs(render=render),
-                            s.claude, limit, transport, budget, progress, on_warning,
-                            critique, critique_passes)  # fmt: skip
-    except Exception as e:  # keep what was built before an API or network failure
-        ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
-        hint = ("\nhint: set ANTHROPIC_WORKSPACE_ID in .env (see .env.example), or use a key made inside a "
-                "workspace") if "workspace" in str(e) else ""  # fmt: skip
-        raise _fail(f"{stage} stopped: {type(e).__name__}: {e} (ops so far: {ops_path}){hint}", 3) from None
-    ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
-    meta = {**record, "model": s.claude.model, "prompt_version": PROMPT_VERSION, "budget": budget,
-            **{k: v for k, v in vars(result).items() if k != "text"}, "cost_usd": round(result.cost_usd, 4)}
-    (out / "design.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
-    console.print(f"\n{result.stopped} after {result.turns} turns, ${result.cost_usd:.2f}")
-    if result.summary:
-        console.print(result.summary)
-    return result, ops_path
+    return Callbacks(progress=progress, warning=lambda m: console.print(f"[yellow]warning:[/yellow] {m}"),
+                     critique=lambda n: console.print(f"[bold]critique pass {n}[/bold]"))  # fmt: skip
 
 
-def _compile_run(result: DesignResult, ops_path: Path, out: Path, name: str, copy: bool) -> None:
-    """Compile a Claude run's ops like `compile`, add its API usage to report.json, exit 5 on a budget stop."""
-    compile_cmd(ops_path, out=out, name=name, copy=copy)
+def _report_run(run: RunResult, stage: str, name: str, out: Path, copy: bool) -> None:
+    """Print a design/edit run, compile it like `compile`, add its API usage to report.json; exit 5 on a
+    budget stop."""
+    r = run.result
+    console.print(f"\n{r.stopped} after {r.turns} turns, ${r.cost_usd:.2f}")
+    if r.summary:
+        console.print(r.summary)
+    if not run.state.doc.ops:
+        raise _fail("no ops were produced", EXIT_BUDGET if r.stopped == "budget" else 3)
+    if run.version is None:
+        console.print("no change was made")
+        return
+    console.print(f"build {name!r} version {run.version}   {'undo' if stage == 'edit' else 'refine'}: "
+                  + (f"img2schem undo {name}" if stage == "edit" else f'img2schem edit {name} "..."'))  # fmt: skip
+    compile_cmd(run.ops_path, out=out, name=name, copy=copy)
     report = json.loads((out / "report.json").read_text(encoding="utf-8"))
-    report["usage"] = {"design": {"cost_usd": round(result.cost_usd, 4), "turns": result.turns,
-                                  "stopped": result.stopped, "per_turn": result.usage}}  # fmt: skip
+    report["usage"] = {"design": {"cost_usd": round(r.cost_usd, 4), "turns": r.turns, "stopped": r.stopped,
+                                  "per_turn": r.usage}}  # fmt: skip
     (out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
-    if result.stopped == "budget":
+    if r.stopped == "budget":
         raise typer.Exit(EXIT_BUDGET)
 
 
@@ -579,52 +510,31 @@ def design(
     replay: Path | None = typer.Option(None, "--replay", help="Replay a recorded session.jsonl (no API calls)."),
     copy: bool = typer.Option(True, "--copy/--no-copy", help="Also copy into the instance's WorldEdit folder."),
 ) -> None:
-    """Claude designs a build from a description (S3), then it compiles like `compile`. Costs API credit.
-
-    The build is kept as builds/<name>.ops.json with a version history: refine it with `img2schem edit`."""
-    from img2schem.designer.critique import critique_message, photo_brief
-    from img2schem.designer.history import BUILDS, History
-    from img2schem.designer.tools import DesignState
-    from img2schem.engine.ops import OpsDoc
+    """Claude designs a build from a description or photos (S3), then it compiles like `compile`. Costs API
+    credit. The build is kept as builds/<name>.ops.json with a version history: refine it with `edit`."""
+    from img2schem.designer import runner
+    from img2schem.designer.history import BUILDS
     from img2schem.stages.ingest import IngestError, ingest
 
-    if not prompt and not photo:
-        raise _fail('describe the build, or give --photo PATH')
     s = load_settings()
-    run = _run_dir(name, out)
-    state = DesignState(OpsDoc(), _load_palette(), s.budgets, _active_palette())
+    run_dir = _run_dir(name, out)
     photos = []
     for i, p in enumerate(photo, start=1):
         try:
-            photos.append(ingest(p, run / f"photo_{i}"))
+            photos.append(ingest(p, run_dir / f"photo_{i}"))
         except (IngestError, OSError) as e:
             raise _fail(str(e)) from None
-    brief: str | list[dict[str, Any]] = (
-        photo_brief(photos, prompt) if photos else
-        f"Design this build: {prompt}\n\nStart from nothing: set the style slots, build it with ops, check it "
-        "with render_views, then call finish.")  # fmt: skip
-    passes = (2 if photos else 0) if critique is None else critique
-    if passes and not photos:
-        raise _fail("--critique compares the build with a photo: add --photo")
-
-    def critique_pass(n: int) -> list[dict[str, Any]]:
-        assert state.compiled is not None
-        console.print(f"[bold]critique pass {n}/{passes}[/bold]")
-        return critique_message(photos[0], state.compiled.grid, state.palette, n, passes,
-                                run / f"critique_{n}.png")  # fmt: skip
-
-    result, ops_path = _run_claude(state, brief, stage="designing", name=name, out=run, budget=budget,
-                                   replay=replay, render=True, critique=critique_pass if passes else None,
-                                   critique_passes=passes,
-                                   record={"prompt": prompt, "photos": [str(p) for p in photo]})  # fmt: skip
-    if not state.doc.ops:
-        raise _fail("no ops were produced", EXIT_BUDGET if result.stopped == "budget" else 3)
-    hist = History(BUILDS / f"{name}.ops.json")
-    what = prompt or ", ".join(p.name for p in photo)
-    n = hist.commit(ops_path.read_text(encoding="utf-8"), kind="design", instruction=what, run=str(run),
-                    cost_usd=round(result.cost_usd, 4), summary=result.summary)
-    console.print(f"build {name!r} version {n}: {hist.ops_path}   refine: img2schem edit {name} \"...\"")
-    _compile_run(result, ops_path, run, name, copy)
+    try:
+        s.claude.budget(budget)
+        if not prompt and not photo:
+            raise runner.RunError("describe the build, or give --photo PATH")
+        console.print(f"designing with {s.claude.model} (budget {budget})")
+        run = runner.design(name, prompt, photos, settings=s, palette=_load_palette(), world=_active_palette(),
+                            out=run_dir, builds=BUILDS, budget=budget, replay=replay, critique_passes=critique,
+                            cb=_callbacks(), sources=[str(p) for p in photo])  # fmt: skip
+    except (runner.RunError, ValueError) as e:
+        raise _fail(str(e), 3 if isinstance(e, runner.RunError) and "stopped" in str(e) else EXIT_BAD_INPUT) from None
+    _report_run(run, "design", name, run_dir, copy)
 
 
 @app.command()
@@ -638,44 +548,23 @@ def edit(
     copy: bool = typer.Option(True, "--copy/--no-copy", help="Also copy into the instance's WorldEdit folder."),
 ) -> None:
     """Claude changes a build as instructed (RD.4); the result is a new version (`undo` goes back)."""
-    from img2schem.designer.history import History, resolve_build
-    from img2schem.designer.tools import DesignState
-    from img2schem.engine.ops import OpsDoc
+    from img2schem.designer import runner
+    from img2schem.designer.history import resolve_build
 
     ops_file = resolve_build(build)
     if not ops_file.is_file():
         raise _fail(f"no build {build!r} ({ops_file} not found)")
-    try:
-        doc = OpsDoc.model_validate_json(ops_file.read_text(encoding="utf-8"))
-    except ValueError as e:
-        raise _fail(f"cannot read {ops_file}: {e}") from None
     name = ops_file.name.removesuffix(".json").removesuffix(".ops")
     s = load_settings()
-    run = _run_dir(name, out)
-    state = DesignState(doc, _load_palette(), s.budgets, _active_palette())
-    before = doc.model_dump_json(by_alias=True, indent=1)
-    issues = [f"{i.severity} {i.rule}: {i.message}" for i in state.issues if i.severity != "info"]
-    brief = (
-        f"Edit this existing build. The owner asks: {instruction}\n\n"
-        f"Current ops.json:\n```json\n{doc.model_dump_json(by_alias=True, exclude_defaults=True)}\n```\n"
-        f"Open validator issues: {json.dumps(issues) if issues else 'none'}\n\n"
-        "Change only what the instruction asks for. Keep the other ops and their ids as they are; prefer "
-        "replace_op on the op that makes a part over adding ops that overwrite it. Find new materials with "
-        "search_palette. Then call finish with one or two sentences on what changed."
-    )
-    hist = History(ops_file)
-    hist.ensure_started()
-    result, ops_path = _run_claude(state, brief, stage="editing", name=name, out=run, budget=budget,
-                                   replay=replay, render=render, record={"instruction": instruction,
-                                                                         "build": str(ops_file)})  # fmt: skip
-    after = state.doc.model_dump_json(by_alias=True, indent=1)
-    if after == before:
-        console.print("no change was made; the build stays at version " + str(hist.current))
-        return
-    n = hist.commit(after, kind="edit", instruction=instruction, run=str(run),
-                    cost_usd=round(result.cost_usd, 4), summary=result.summary)
-    console.print(f"build {name!r} version {n} (undo: img2schem undo {name})")
-    _compile_run(result, ops_path, run, name, copy)
+    run_dir = _run_dir(name, out)
+    try:
+        s.claude.budget(budget)
+        console.print(f"editing with {s.claude.model} (budget {budget})")
+        run = runner.edit(ops_file, instruction, settings=s, palette=_load_palette(), world=_active_palette(),
+                          out=run_dir, budget=budget, replay=replay, render=render, cb=_callbacks())  # fmt: skip
+    except (runner.RunError, ValueError) as e:
+        raise _fail(str(e), 3 if isinstance(e, runner.RunError) and "stopped" in str(e) else EXIT_BAD_INPUT) from None
+    _report_run(run, "edit", name, run_dir, copy)
 
 
 def _step(build: str, delta: int, copy: bool) -> None:

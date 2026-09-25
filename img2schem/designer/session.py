@@ -13,7 +13,7 @@ from typing import Any
 from img2schem.config import BudgetUSD, ClaudeSettings
 from img2schem.designer.budget import BudgetExceeded, BudgetGuard
 from img2schem.designer.pricing import usage_cost, worst_case
-from img2schem.designer.tools import DesignState
+from img2schem.designer.tools import DesignState, ToolResult
 from img2schem.designer.transport import Progress, Transport
 
 MAX_SAME_OP_ERRORS = 3  # RD.3
@@ -51,6 +51,7 @@ def run_design(
     on_warning: Callable[[str], None] | None = None,
     critique: Callable[[int], list[dict[str, Any]]] | None = None,
     critique_passes: int = 0,
+    on_tool: Callable[[str, Any, ToolResult], None] | None = None,
 ) -> DesignResult:
     """``critique(n)`` gives the content of critique pass n (RC.1): after each ``finish``, up to
     ``critique_passes`` times, it is sent to Claude, which fixes what it finds and finishes again."""
@@ -125,6 +126,8 @@ def run_design(
                                            "send smaller calls (e.g. fewer ops per define)"})  # fmt: skip
                 continue
             r = state.execute(b["name"], b.get("input"))
+            if on_tool:
+                on_tool(b["name"], b.get("input"), r)
             op_id = (b.get("input") or {}).get("id") if isinstance(b.get("input"), dict) else None
             text = r.content
             if r.is_error and op_id:
