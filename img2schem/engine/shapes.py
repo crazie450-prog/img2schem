@@ -60,16 +60,21 @@ def key_at(keys: list[LoftKey], y: int, smooth: bool) -> dict[str, float]:
 
 
 def inside(pts: np.ndarray, cx: np.ndarray, cz: np.ndarray) -> np.ndarray:
-    """Even-odd rule: which points (cx, cz) lie inside the closed polygon ``pts``."""
-    result = np.zeros(cx.shape, dtype=bool)
+    """Even-odd rule: which points of the grid (cx, cz) (meshgrid, indexing "ij": rows share x, columns z) lie
+    inside the closed polygon ``pts``. Scanline: a point is inside if an odd number of edges cross its column
+    line (constant z) at a larger x."""
     x0, z0 = pts[:, 0], pts[:, 1]
     x1, z1 = np.roll(x0, -1), np.roll(z0, -1)
-    for ax, az, bx, bz in zip(x0, z0, x1, z1, strict=True):
-        if az == bz:
-            continue
-        crosses = (az > cz) != (bz > cz)
-        x_at = ax + (cz - az) * (bx - ax) / (bz - az)
-        result ^= crosses & (cx < x_at)
+    keep = z0 != z1
+    x0, z0, x1, z1 = x0[keep], z0[keep], x1[keep], z1[keep]
+    xs, zs = cx[:, 0], cz[0, :]
+    result = np.zeros(cx.shape, dtype=bool)
+    crosses = (z0[None, :] > zs[:, None]) != (z1[None, :] > zs[:, None])  # [z, edge]
+    x_at = x0 + (zs[:, None] - z0) * (x1 - x0) / (z1 - z0)
+    for j in np.flatnonzero(crosses.any(axis=1)):
+        hits = np.sort(x_at[j][crosses[j]])
+        right = len(hits) - np.searchsorted(hits, xs, side="right")  # crossings with x_at > x
+        result[:, j] = right % 2 == 1
     return result
 
 
@@ -84,35 +89,34 @@ def profile_mask(profile: Profile, key: dict[str, float], pivot: tuple[float, fl
     return mask
 
 
-Cell3 = tuple[int, int, int]
 CROSS = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
 DIRS: tuple[tuple[Direction, int, int], ...] = (("east", 1, 0), ("west", -1, 0), ("south", 0, 1), ("north", 0, -1))
+NO_CELLS = np.zeros((0, 3), np.int64)
 
 
 @dataclass
 class LoftCells:
-    """A loft's cells by role (disjoint), in world coordinates."""
+    """A loft's cells by role (disjoint), as (N, 3) arrays of world (x, y, z)."""
 
-    walls: list[Cell3] = field(default_factory=list)
-    floors: list[Cell3] = field(default_factory=list)
-    mullions: list[Cell3] = field(default_factory=list)
-    lights: list[Cell3] = field(default_factory=list)
-    steps: dict[Cell3, tuple[Direction, bool]] = field(default_factory=dict)  # stair: (ascend, upside down)
+    walls: np.ndarray = field(default_factory=lambda: NO_CELLS)
+    floors: np.ndarray = field(default_factory=lambda: NO_CELLS)
+    mullions: np.ndarray = field(default_factory=lambda: NO_CELLS)
+    lights: np.ndarray = field(default_factory=lambda: NO_CELLS)
+    steps: np.ndarray = field(default_factory=lambda: NO_CELLS)  # stairs ...
+    step_dir: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))  # ... ascending DIRS[i] ...
+    step_down: np.ndarray = field(default_factory=lambda: np.zeros(0, bool))  # ... upside down
 
 
-def _step(solid: np.ndarray, x: int, y: int, z: int, dy: int) -> Direction | None:
-    """If the cell's face toward ``dy`` is open but the surface continues one level over on a side, the side it
-    continues on (the one with the most solid cells over it, among the 3 cells on that side)."""
-    if not 0 <= y + dy < solid.shape[1] or solid[x, y + dy, z]:
-        return None
-    best, best_n = None, 0
-    for d, ddx, ddz in DIRS:
-        if not solid[x + ddx, y + dy, z + ddz]:
-            continue
-        n = sum(int(solid[x + ddx + p * abs(ddz), y + dy, z + ddz + p * abs(ddx)]) for p in (-1, 0, 1))
-        if n > best_n:
-            best, best_n = d, n
-    return best
+def _steps(solid: np.ndarray, x: np.ndarray, y: np.ndarray, z: np.ndarray, dy: int) -> tuple[np.ndarray, np.ndarray]:
+    """For cells (x, y, z) of ``solid`` (padded by one empty level above and below): whether the face toward
+    ``dy`` is open while the surface continues one level over on a side, and that side (index into DIRS: the one
+    with the most solid cells over it among the 3 cells on that side; the first on a tie)."""
+    yy = y + dy
+    scores = np.zeros((len(x), len(DIRS)), np.int64)
+    for k, (_, ddx, ddz) in enumerate(DIRS):
+        n = sum(solid[x + ddx + p * abs(ddz), yy, z + ddz + p * abs(ddx)].astype(np.int64) for p in (-1, 0, 1))
+        scores[:, k] = np.where(solid[x + ddx, yy, z + ddz], n, 0)
+    return ~solid[x, yy, z] & (scores.max(axis=1) > 0), scores.argmax(axis=1)
 
 
 def loft_cells(op: Loft) -> LoftCells:
@@ -124,15 +128,16 @@ def loft_cells(op: Loft) -> LoftCells:
     hi = np.ceil(outer.max(axis=0)).astype(int) + 2
     origin, size = (int(lo[0]), int(lo[1])), (int(hi[0] - lo[0] + 1), int(hi[1] - lo[1] + 1))
     kernel = np.ones((3, 3), np.uint8)
-    solid = np.zeros((size[0], len(keys), size[1]), bool)  # the profile at each level, for smoothing
-    out = LoftCells()
+    solid = np.zeros((size[0], len(keys) + 2, size[1]), bool)  # the profile at each level (+1), for smoothing
+    parts: dict[str, list[np.ndarray]] = {"walls": [], "floors": [], "mullions": [], "lights": []}
 
-    def world(x: int, y: int, z: int) -> Cell3:
-        return int(x) + origin[0], y, int(z) + origin[1]
+    def add(role: str, cells: np.ndarray, y: int) -> None:
+        xz = np.argwhere(cells)
+        parts[role].append(np.column_stack([xz[:, 0] + origin[0], np.full(len(xz), y), xz[:, 1] + origin[1]]))
 
     for i, (y, key) in enumerate(keys.items()):
         mask = profile_mask(op.profile, key, op.pivot, origin, size)
-        solid[:, i, :] = mask
+        solid[:, i + 1, :] = mask
         is_floor = (op.floor_every is not None and (y - y0) % op.floor_every == 0) or (op.caps and y in (y0, y1))
         edge = mask & ~cv2.erode(mask.astype(np.uint8), CROSS, borderValue=0).astype(bool)  # face-adjacent to outside
         if op.fill == "shell" and not is_floor:
@@ -154,25 +159,24 @@ def loft_cells(op: Loft) -> LoftCells:
             a = np.arctan2(pz, px) - math.radians(key["rotate"])
             off = (a + pitch / 2) % pitch - pitch / 2  # angle to the nearest rib
             rib = layer & (np.abs(np.sin(off)) * np.hypot(px, pz) <= 0.5 + 1e-9)  # within half a block of the line
-        target = out.floors if is_floor and op.fill == "shell" else out.walls
-        target.extend(world(x, y, z) for x, z in np.argwhere(layer & ~lit & ~rib))
-        out.lights.extend(world(x, y, z) for x, z in np.argwhere(lit))
-        out.mullions.extend(world(x, y, z) for x, z in np.argwhere(rib))
+        add("floors" if is_floor and op.fill == "shell" else "walls", layer & ~lit & ~rib, y)
+        add("lights", lit, y)
+        add("mullions", rib, y)
 
-    if op.smooth:
-        walls = []
-        for c in out.walls:
-            x, i, z = c[0] - origin[0], c[1] - y0, c[2] - origin[1]
-            up, down = _step(solid, x, i, z, 1), _step(solid, x, i, z, -1)
-            if up or down:
-                out.steps[c] = (up, False) if up else (down, True)  # type: ignore[assignment]
-            else:
-                walls.append(c)
-        out.walls = walls
+    out = LoftCells(**{k: np.concatenate(v) if v else NO_CELLS for k, v in parts.items()})
+    if op.smooth and len(out.walls):
+        wx, wy, wz = out.walls[:, 0] - origin[0], out.walls[:, 1] - y0 + 1, out.walls[:, 2] - origin[1]
+        up, up_dir = _steps(solid, wx, wy, wz, 1)
+        down, down_dir = _steps(solid, wx, wy, wz, -1)
+        step = up | down
+        out.steps, out.step_down = out.walls[step], ~up[step]
+        out.step_dir = np.where(up, up_dir, down_dir)[step]
+        out.walls = out.walls[~step]
     return out
 
 
-def sweep_cells(op: Sweep, samples_per_block: int = 4) -> list[tuple[int, int, int]]:
+def sweep_cells(op: Sweep, samples_per_block: int = 4) -> np.ndarray:
+    """(N, 3) cells within ``radius`` of the curve."""
     pts = np.array(op.points, dtype=np.float64)
     if op.interp == "smooth" and len(pts) > 2:
         ext = np.vstack([pts[0], pts, pts[-1]])
@@ -191,10 +195,6 @@ def sweep_cells(op: Sweep, samples_per_block: int = 4) -> list[tuple[int, int, i
     r = op.radius
     k = int(math.ceil(r)) + 1
     grid = np.stack(np.meshgrid(*[np.arange(-k, k + 1)] * 3, indexing="ij"), axis=-1).reshape(-1, 3)
-    cells: set[tuple[int, int, int]] = set()
-    for s in samples:
-        base = np.floor(s).astype(int)
-        cand = base + grid
-        near = cand[np.linalg.norm(cand + 0.5 - s, axis=1) <= r]
-        cells.update((int(a), int(b), int(c)) for a, b, c in near)
-    return sorted(cells)
+    cand = np.floor(samples).astype(np.int64)[:, None, :] + grid[None, :, :]  # [sample, offset, xyz]
+    near = np.linalg.norm(cand + 0.5 - samples[:, None, :], axis=2) <= r
+    return np.unique(cand[near], axis=0)

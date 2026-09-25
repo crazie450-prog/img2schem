@@ -309,3 +309,17 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   core floor levels (36, 52, 64) with double doors facing east; a spiral stair runs from the lobby to a roof
   deck with a railing.
 - **Not verified in game yet:** east-facing doors (only north was checked, D-014) and the smoothing stairs.
+
+### D-028 Array-based compiler (RE.8 performance)
+- **Context:** grand-scale builds (D-026). The compiler kept a Python dict entry per cell and the even-odd
+  test looped over every outline edge on the whole grid: the tower took 0.65 s, and a million-block build
+  would take tens of seconds.
+- **Decision:** each op rasterizes to arrays (`Raster`: positions, block ids, labels); box, walls, floors,
+  carve, loft and sweep build them with numpy, the small ops still produce lists that are converted. The ops are
+  applied in order to dense idx/label/op-index grids sized to the union of all solid cells, then cropped to what
+  survives (carves can shrink it). Within one op the last cell at a position wins (`keep`: the first), as
+  before. The polygon test is a scanline: per row, the sorted edge crossings and a binary search.
+- **Result:** identical grids and op summaries for the house, cottage and tower. Tower 0.65 → 0.17 s (RE.8's
+  200 ms target); a 241 × 251 × 241 test build of 535k blocks compiles in 1.8 s. The palette is now ordered
+  by first use in op order, so the golden grid was regenerated (same blocks by name).
+- **Still to do from RE.8:** incremental recompiles (Phase 3 UI).

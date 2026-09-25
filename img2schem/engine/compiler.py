@@ -31,7 +31,7 @@ from img2schem.engine.ops import (
     Window,
 )
 from img2schem.engine.roof import roof_cells
-from img2schem.engine.shapes import loft_cells, sweep_cells
+from img2schem.engine.shapes import DIRS, loft_cells, sweep_cells
 from img2schem.engine.states import Direction, door_metas, log_meta, stairs_meta
 from img2schem.models import AIR, BlockGrid
 from img2schem.palette.query import PaletteIndex
@@ -67,6 +67,45 @@ class Compiled:
     op_index: np.ndarray  # int16 [X, Y, Z], -1 = no op
     origin: tuple[int, int, int]
     summaries: list[OpSummary]
+
+
+@dataclass
+class Raster:
+    """One op's cells as arrays: ``pos`` (N, 3) design coordinates, ``block_ids`` (N,) indexing ``blocks``,
+    ``labels`` (N,). Later cells win over earlier ones at the same position."""
+
+    pos: np.ndarray
+    blocks: list[str]
+    block_ids: np.ndarray
+    labels: np.ndarray
+
+    @classmethod
+    def uniform(cls, pos: np.ndarray, block: str, label: int) -> Raster:
+        pos = np.asarray(pos, np.int64).reshape(-1, 3)
+        return cls(pos, [block], np.zeros(len(pos), np.int64), np.full(len(pos), label, np.uint8))
+
+    @classmethod
+    def of(cls, cells: list[Cell]) -> Raster:
+        if not cells:
+            return cls.uniform(np.zeros((0, 3)), AIR, AIR_L)
+        blocks = list(dict.fromkeys(c[3] for c in cells))
+        ids = {b: i for i, b in enumerate(blocks)}
+        return cls(np.array([c[:3] for c in cells], np.int64), blocks, np.array([ids[c[3]] for c in cells], np.int64),
+                   np.array([c[4] for c in cells], np.uint8))  # fmt: skip
+
+    @classmethod
+    def concat(cls, parts: list[Raster]) -> Raster:
+        blocks = list(dict.fromkeys(b for r in parts for b in r.blocks))
+        ids = {b: i for i, b in enumerate(blocks)}
+        return cls(np.concatenate([r.pos for r in parts]), blocks,
+                   np.concatenate([np.array([ids[b] for b in r.blocks], np.int64)[r.block_ids] for r in parts]),
+                   np.concatenate([r.labels for r in parts]))  # fmt: skip
+
+
+def _box_cells(a: tuple[int, int, int], b: tuple[int, int, int]) -> np.ndarray:
+    lo, hi = np.minimum(a, b), np.maximum(a, b)
+    axes = [np.arange(lo[i], hi[i] + 1) for i in range(3)]
+    return np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
 
 
 def _box(a: tuple[int, int, int], b: tuple[int, int, int]):  # type: ignore[no-untyped-def]
@@ -127,24 +166,23 @@ def _stairs(res: Resolver, mat: str) -> Material:
     return m
 
 
-def _loft(op: Loft, res: Resolver) -> list[Cell]:
+def _loft(op: Loft, res: Resolver) -> Raster:
     lc = loft_cells(op)
     wall_b = res(op.mat).block
     floor_b = res(op.floor_mat).block if op.floor_mat else wall_b
-    cells = [(x, y, z, wall_b, WALL) for x, y, z in lc.walls] + [(x, y, z, floor_b, FLOOR) for x, y, z in lc.floors]
+    parts = [Raster.uniform(lc.walls, wall_b, WALL), Raster.uniform(lc.floors, floor_b, FLOOR)]
     if op.mullions:
-        b = res(op.mullions.mat).block
-        cells += [(x, y, z, b, TRIM) for x, y, z in lc.mullions]
+        parts.append(Raster.uniform(lc.mullions, res(op.mullions.mat).block, TRIM))
     if op.lights:
-        b = res(op.lights.mat).block
-        cells += [(x, y, z, b, OTHER) for x, y, z in lc.lights]
-    if lc.steps:
+        parts.append(Raster.uniform(lc.lights, res(op.lights.mat).block, OTHER))
+    if len(lc.steps):
         if not op.mat.startswith("$"):
             raise MaterialError(f"smooth needs mat to be a slot (e.g. $wall) to find its stairs, not {op.mat}")
         st = _stairs(res, f"{op.mat}.stairs")
-        cells += [(x, y, z, format_block(st.name, stairs_meta(st.meta, d, down)), WALL)
-                  for (x, y, z), (d, down) in lc.steps.items()]  # fmt: skip
-    return cells
+        blocks = [format_block(st.name, stairs_meta(st.meta, d, down)) for down in (False, True) for d, _, _ in DIRS]
+        ids = lc.step_dir + len(DIRS) * lc.step_down
+        parts.append(Raster(lc.steps, blocks, ids, np.full(len(ids), WALL, np.uint8)))
+    return Raster.concat(parts)
 
 
 def _spiral_stair(op: SpiralStair, res: Resolver) -> list[Cell]:
@@ -170,25 +208,32 @@ def _spiral_stair(op: SpiralStair, res: Resolver) -> list[Cell]:
     return cells
 
 
-def rasterize(op: Op, res: Resolver) -> list[Cell]:
+def rasterize(op: Op, res: Resolver) -> Raster:
+    if isinstance(op, Loft):
+        return _loft(op, res)
+    if isinstance(op, Sweep):
+        return Raster.uniform(sweep_cells(op), res(op.mat).block, OTHER)
+    cells = _cells(op, res)
+    return cells if isinstance(cells, Raster) else Raster.of(cells)
+
+
+def _cells(op: Op, res: Resolver) -> list[Cell] | Raster:
     if isinstance(op, Box):
-        b = res(op.mat).block
-        lo, hi = op.from_, op.to
-        return [
-            (x, y, z, b, OTHER)
-            for x, y, z in _box(lo, hi)
-            if not op.hollow or x in (lo[0], hi[0]) or y in (lo[1], hi[1]) or z in (lo[2], hi[2])
-        ]
+        c = _box_cells(op.from_, op.to)
+        if op.hollow:
+            lo, hi = np.minimum(op.from_, op.to), np.maximum(op.from_, op.to)
+            c = c[((c == lo) | (c == hi)).any(axis=1)]
+        return Raster.uniform(c, res(op.mat).block, OTHER)
     if isinstance(op, Walls):
-        b, fp, t = res(op.mat).block, op.footprint, op.thickness
-        return [
-            (x, y, z, b, WALL)
-            for x, y, z in _box((fp.x0, op.y0, fp.z0), (fp.x1, op.y0 + op.height - 1, fp.z1))
-            if x < fp.x0 + t or x > fp.x1 - t or z < fp.z0 + t or z > fp.z1 - t
-        ]
+        fp, t = op.footprint, op.thickness
+        c = _box_cells((fp.x0, op.y0, fp.z0), (fp.x1, op.y0 + op.height - 1, fp.z1))
+        cx, cz = c[:, 0], c[:, 2]
+        c = c[(cx < fp.x0 + t) | (cx > fp.x1 - t) | (cz < fp.z0 + t) | (cz > fp.z1 - t)]
+        return Raster.uniform(c, res(op.mat).block, WALL)
     if isinstance(op, Floors):
-        b, fp = res(op.mat).block, op.footprint
-        return [(x, y, z, b, FLOOR) for y in op.ys for x, _, z in _box((fp.x0, y, fp.z0), (fp.x1, y, fp.z1))]
+        fp = op.footprint
+        layers = [_box_cells((fp.x0, fy, fp.z0), (fp.x1, fy, fp.z1)) for fy in op.ys]
+        return Raster.uniform(np.concatenate(layers) if layers else np.zeros((0, 3)), res(op.mat).block, FLOOR)
     if isinstance(op, Door):
         m = res(op.mat)
         lower, upper = door_metas(op.facing, op.hinge == "right")
@@ -214,66 +259,74 @@ def rasterize(op: Op, res: Resolver) -> list[Cell]:
         return [
             (x, op.y, z, b, TRIM) for x, _, z in _box((x0, op.y, z0), (x1, op.y, z1)) if x in (x0, x1) or z in (z0, z1)
         ]
-    if isinstance(op, Loft):
-        return _loft(op, res)
     if isinstance(op, SpiralStair):
         return _spiral_stair(op, res)
-    if isinstance(op, Sweep):
-        b = res(op.mat).block
-        return [(x, y, z, b, OTHER) for x, y, z in sweep_cells(op)]
     if isinstance(op, Carve):
-        return [(x, y, z, AIR, AIR_L) for x, y, z in _box(op.from_, op.to)]
+        return Raster.uniform(_box_cells(op.from_, op.to), AIR, AIR_L)
     if isinstance(op, SetBlock):
         b = res(op.block).block
         return [(x, y, z, b, OTHER) for x, y, z in op.cells]
     raise TypeError(f"unhandled op {type(op).__name__}")
 
 
+def _last(pos: np.ndarray, first: bool) -> np.ndarray:
+    """Indices of one cell per distinct position: the last occurrence (the first with ``first``), in order."""
+    order = np.arange(len(pos)) if first else np.arange(len(pos))[::-1]
+    _, keep = np.unique(pos[order], axis=0, return_index=True)
+    return np.sort(order[keep])
+
+
 def compile_ops(doc: OpsDoc, index: PaletteIndex | None = None, hard_max_total: int = 2_000_000) -> Compiled:
     res = Resolver(doc.style, index)
-    world: dict[tuple[int, int, int], tuple[str, int, int]] = {}  # cell -> (block, label, op index)
-    summaries: list[OpSummary] = []
-    for i, op in enumerate(doc.ops):
+    rasters: list[Raster] = []
+    for op in doc.ops:
         try:
-            cells = rasterize(op, res)
+            rasters.append(rasterize(op, res))
         except (MaterialError, ValueError) as e:
             raise CompileError(op.id, str(e)) from None
-        s = OpSummary(op.id, op.label)
-        for x, y, z, block, label in cells:
-            key = (x, y, z)
-            prev = world.get(key)
-            if op.mode == "keep" and prev is not None and prev[0] != AIR:
-                continue
-            if prev is not None and prev[0] != AIR:
-                s.overwritten += 1
-            world[key] = (block, label, i)
-            s.cells += 1
-            s.blocks[block] = s.blocks.get(block, 0) + 1
-        if cells:
-            xs, ys, zs = zip(*((c[0], c[1], c[2]) for c in cells), strict=True)
-            s.bounds = ((min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs)))
-        summaries.append(s)
 
-    solid = {k: v for k, v in world.items() if v[0] != AIR}
+    palette = [AIR] + list(dict.fromkeys(b for r in rasters for b in r.blocks if b != AIR))
+    gid = {b: i for i, b in enumerate(palette)}
+    solid = [r.pos[np.array([b != AIR for b in r.blocks], bool)[r.block_ids]] for r in rasters]
+    solid = [p for p in solid if len(p)]
+    summaries = [OpSummary(op.id, op.label) for op in doc.ops]
     if not solid:
         return Compiled(BlockGrid.empty(1, 1, 1), np.zeros((1, 1, 1), np.uint8), np.full((1, 1, 1), -1, np.int16),
                         (0, 0, 0), summaries)  # fmt: skip
-    keys = np.array(list(solid))
-    lo, hi = keys.min(axis=0), keys.max(axis=0)
+    lo = np.min([p.min(axis=0) for p in solid], axis=0)
+    hi = np.max([p.max(axis=0) for p in solid], axis=0)
     dims = hi - lo + 1
     total = int(np.prod(dims))
     if total > hard_max_total:  # RE.7: check before allocating
         raise CompileError("*", f"bounding box {tuple(int(d) for d in dims)} = {total} cells exceeds {hard_max_total}")
-    grid = BlockGrid.empty(*(int(d) for d in dims))
-    labels = np.zeros(grid.shape, np.uint8)
-    op_index = np.full(grid.shape, -1, np.int16)
-    for (x, y, z), (block, label, i) in solid.items():
-        gx, gy, gz = x - lo[0], y - lo[1], z - lo[2]
-        grid.idx[gx, gy, gz] = grid.index_of(block)
-        labels[gx, gy, gz] = label
-        op_index[gx, gy, gz] = i
-    origin = (int(-lo[0]), int(-lo[1]), int(-lo[2]))
-    return Compiled(grid, labels, op_index, origin, summaries)
+    idx = np.zeros(tuple(int(d) for d in dims), np.int32)
+    labels = np.zeros(idx.shape, np.uint8)
+    op_index = np.full(idx.shape, -1, np.int16)
+
+    for i, (op, r, s) in enumerate(zip(doc.ops, rasters, summaries, strict=True)):
+        if not len(r.pos):
+            continue
+        s.bounds = (tuple(int(v) for v in r.pos.min(axis=0)), tuple(int(v) for v in r.pos.max(axis=0)))  # type: ignore[assignment]
+        pick = _last(r.pos, first=op.mode == "keep")
+        p = r.pos[pick] - lo
+        inside = ((p >= 0) & (p < dims)).all(axis=1)  # only air (carves) can fall outside the solid bounds
+        pick, p = pick[inside], p[inside]
+        cell = (p[:, 0], p[:, 1], p[:, 2])
+        prev = idx[cell]
+        if op.mode == "keep":
+            pick, cell, prev = pick[prev == 0], tuple(a[prev == 0] for a in cell), prev[prev == 0]
+        g = np.array([gid[b] for b in r.blocks], np.int32)[r.block_ids[pick]]
+        s.cells, s.overwritten = len(pick), int((prev != 0).sum())
+        idx[cell], labels[cell], op_index[cell] = g, r.labels[pick], i
+        counts = np.bincount(g, minlength=len(palette))
+        s.blocks = {palette[j]: int(n) for j, n in enumerate(counts) if n}
+
+    nz = np.argwhere(idx != 0)
+    a, b = nz.min(axis=0), nz.max(axis=0) + 1  # carves can shrink the bounds
+    crop = tuple(slice(int(u), int(v)) for u, v in zip(a, b, strict=True))
+    grid = BlockGrid(idx[crop].copy(), palette).compact()
+    origin = tuple(int(v) for v in -(lo + a))
+    return Compiled(grid, labels[crop].copy(), op_index[crop].copy(), origin, summaries)  # type: ignore[arg-type]
 
 
 def paste_offset(c: Compiled) -> tuple[int, int, int]:
