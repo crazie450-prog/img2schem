@@ -23,7 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 vlm = ["anthropic>=1.8"]
-server = ["fastapi>=0.115", "uvicorn>=0.30"]
+server = ["fastapi>=0.115", "uvicorn>=0.30", "websockets>=12"]
 dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "httpx"]
 
 [project.scripts]

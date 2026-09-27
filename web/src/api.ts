@@ -72,6 +72,12 @@ export function runJob(msg: Record<string, unknown>, onEvent: (e: RunEvent) => v
         (sawDone && e.type === "warning");
       if (last && !finished) { finished = true; ws.close(); resolve(); }
     };
-    ws.onclose = () => { if (!finished) { finished = true; resolve(); } };
+    ws.onclose = () => {
+      if (finished) return;
+      finished = true;
+      onEvent({ type: "error", message: "Lost the connection to the img2schem server (its WebSocket). If this "
+        + "happens at once, run: pip install -e \".[vlm,server]\" and restart img2schem serve." });
+      resolve();
+    };
   });
 }
