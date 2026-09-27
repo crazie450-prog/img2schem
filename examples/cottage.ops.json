@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "style": {
+    "wall": "BiomesOPlenty:mudBricks",
+    "base": "minecraft:cobblestone",
+    "floor": "BiomesOPlenty:planks@3",
+    "roof": "BiomesOPlenty:planks@1",
+    "trim": "BiomesOPlenty:planks@3",
+    "glass": "minecraft:glass_pane",
+    "door": "minecraft:wooden_door",
+    "post": "minecraft:log@1",
+    "chimney": "minecraft:stonebrick"
+  },
+  "ops": [
+    {"op": "floors", "id": "base", "label": "Foundation", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "ys": [0], "mat": "$base"},
+    {"op": "walls", "id": "walls", "label": "Walls", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "y0": 1, "height": 5},
+    {"op": "floors", "id": "floor", "label": "Wood floor", "footprint": {"x0": 1, "z0": 1, "x1": 9, "z1": 7}, "ys": [0]},
+    {"op": "trim_band", "id": "eaves", "label": "Wooden band under the eaves", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "y": 5},
+    {"op": "column", "id": "corner-nw", "label": "Corner post", "pos": [0, 0], "y0": 1, "height": 5, "mat": "$post"},
+    {"op": "column", "id": "corner-ne", "label": "Corner post", "pos": [10, 0], "y0": 1, "height": 5, "mat": "$post"},
+    {"op": "column", "id": "corner-sw", "label": "Corner post", "pos": [0, 8], "y0": 1, "height": 5, "mat": "$post"},
+    {"op": "column", "id": "corner-se", "label": "Corner post", "pos": [10, 8], "y0": 1, "height": 5, "mat": "$post"},
+    {"op": "openings", "id": "win-front", "label": "Front windows", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "face": "front", "sills": [2], "w": 2, "h": 2, "count": 2, "spacing": 3},
+    {"op": "openings", "id": "win-sides", "label": "West windows", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "face": "left", "sills": [2], "w": 1, "h": 2, "count": 2, "spacing": 3},
+    {"op": "openings", "id": "win-east", "label": "East windows", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "face": "right", "sills": [2], "w": 1, "h": 2, "count": 2, "spacing": 3},
+    {"op": "carve", "id": "door-gap", "label": "Door opening", "from": [5, 1, 0], "to": [5, 2, 0]},
+    {"op": "door", "id": "door", "label": "Front door", "pos": [5, 1, 0], "facing": "north"},
+    {"op": "roof", "id": "roof", "label": "Main roof - hip, 1:1, cherry", "footprint": {"x0": 0, "z0": 0, "x1": 10, "z1": 8}, "y0": 6, "type": "hip", "overhang": 1},
+    {"op": "floors", "id": "porch-floor", "label": "Porch deck", "footprint": {"x0": 2, "z0": -3, "x1": 8, "z1": -1}, "ys": [0], "mat": "$trim"},
+    {"op": "column", "id": "porch-post-w", "label": "Porch post", "pos": [2, -3], "y0": 1, "height": 3, "mat": "$post"},
+    {"op": "column", "id": "porch-post-e", "label": "Porch post", "pos": [8, -3], "y0": 1, "height": 3, "mat": "$post"},
+    {"op": "roof", "id": "porch-roof", "label": "Porch roof - half-slab shed", "footprint": {"x0": 2, "z0": -3, "x1": 8, "z1": -1}, "y0": 4, "type": "shed", "rise": "south", "pitch": "1:2", "overhang": 0, "gable_fill": "$trim", "mode": "keep"},
+    {"op": "box", "id": "chimney", "label": "Chimney on the east side", "from": [8, 1, 5], "to": [8, 11, 6], "mat": "$chimney"}
+  ]
+}

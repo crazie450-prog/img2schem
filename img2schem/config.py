@@ -11,13 +11,48 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Budgets(BaseModel):
-    max_dim: int = 128
-    max_nonair: int = 250_000
-    hard_max_total: int = 2_000_000
+    # Owner decision D-026: grand-scale builds. max_dim / max_nonair only warn; hard_max_total stops the compile.
+    max_dim: int = 256
+    max_nonair: int = 1_000_000
+    hard_max_total: int = 16_000_000
+    max_height: int = 256  # Minecraft 1.7.10 worlds end at y = 256: a taller build cannot be pasted
+
+
+class BudgetUSD(BaseModel):
+    """Per-build API spend: a warning once ``warn`` is passed, a clean stop before ``stop`` would be passed."""
+
+    warn: float = Field(gt=0)
+    stop: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _order(self) -> BudgetUSD:
+        if self.stop < self.warn:
+            raise ValueError(f"budget stop {self.stop} is below warn {self.warn}")
+        return self
+
+
+def _default_budgets() -> dict[str, BudgetUSD]:
+    # Owner decision D-030: US$1 / US$5 per build by default, US$5 / US$10 with --budget large.
+    return {"default": BudgetUSD(warn=1.0, stop=5.0), "large": BudgetUSD(warn=5.0, stop=10.0)}
+
+
+class ClaudeSettings(BaseModel):
+    # Model IDs and the rest come from designer/data/defaults.yaml (CLAUDE.md: never hard-coded).
+    model: str
+    fallback_model: str | None = None
+    effort: str = "high"
+    max_tokens: int = Field(32000, ge=1024)
+    turn_cap: int = Field(30, ge=1)
+    budget_usd: dict[str, BudgetUSD] = Field(default_factory=_default_budgets)
+
+    def budget(self, name: str = "default") -> BudgetUSD:
+        if name not in self.budget_usd:
+            raise ValueError(f"no budget {name!r} (have: {', '.join(self.budget_usd)})")
+        return self.budget_usd[name]
 
 
 class ExportSettings(BaseModel):
@@ -28,9 +63,12 @@ class ExportSettings(BaseModel):
 
 class Settings(BaseModel):
     instance: str | None = None
+    world: str | None = None  # save folder name or path; its level.dat lists the valid block names
+    palette: str | None = None  # palette.json written by `palette import` (colors, shapes)
     schem_version: int = 2
     budgets: Budgets = Field(default_factory=Budgets)
     export: ExportSettings = Field(default_factory=ExportSettings)
+    claude: ClaudeSettings = Field(default_factory=lambda: ClaudeSettings.model_validate(_packaged()["claude"]))
     cache_dir: str = "~/.cache/img2schem"
 
     @property
@@ -62,11 +100,19 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _packaged() -> dict[str, Any]:
+    return _read_yaml(Path(__file__).parent / "designer" / "data" / "defaults.yaml")
+
+
 def load_settings() -> Settings:
-    data: dict[str, Any] = {}
+    data: dict[str, Any] = _packaged()
     for p in (user_config_path(), Path("config.yaml")):
         data = _deep_merge(data, _read_yaml(p))
-    for key, field in (("IMG2SCHEM_INSTANCE", "instance"), ("IMG2SCHEM_CACHE_DIR", "cache_dir")):
+    for key, field in (
+        ("IMG2SCHEM_INSTANCE", "instance"),
+        ("IMG2SCHEM_WORLD", "world"),
+        ("IMG2SCHEM_CACHE_DIR", "cache_dir"),
+    ):
         if key in os.environ:
             data[field] = os.environ[key]
     return Settings.model_validate(data)

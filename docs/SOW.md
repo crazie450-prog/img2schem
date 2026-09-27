@@ -5,6 +5,9 @@
 **Prepared for:** Execution by Claude Code (autonomous coding agent), owned and reviewed by Clayton
 **Companion docs:** *Photo-to-Minecraft: Feasibility and Build Path* (Sept 2026). v1.0 of this SOW is kept for reference; wherever it conflicts with v2.0, **v2.0 governs**.
 
+> **Re-scoped 2026-09-23 for GT New Horizons (Minecraft 1.7.10):** see `docs/SOW_GTNH.md`, which governs
+> wherever it conflicts with this document (output format, block identity, palette source, test beds).
+
 ---
 
 ## 0. How to use this document (read first)

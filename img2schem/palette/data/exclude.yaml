@@ -1,0 +1,12 @@
+# Blocks the builder must not use, matched (case-insensitive regex) against "<class simple name> <display name>".
+# Matching variants get the "excluded" flag. Mostly tile-entity blocks (machines, storage), which paste broken
+# without their NBT, plus ores, plants and gravity blocks. Edit freely.
+patterns:
+  - machine|generator|dynamo|turbine|reactor|\bengine|\bpump\b|boiler|furnace|smeltery|\bforge\b|crucible|\baltar
+  - drawer|chest|barrel|\bcrate|\btank\b|\bsafe\b|compartment|buffer|interface|terminal|cabinet|shelf|bookcase
+  - hatch|\bbus\b|controller|charger|\bloader|unloader|valve|conduit|cable|\bpipe\b|\bwire\b|sensor|detector|anchor
+  - solar|battery|capacitor|accumulator|spawner|portal|teleport|\bbeacon\b|\bcore\b|computer|monitor|\bunit\b|mailbox|command block|puzzle
+  - crafting|workbench|\btable\b|anvil|enchant|brewing|cauldron|hopper|dropper|dispenser|piston|jukebox|note block
+  - alveary|\bhive\b|bee house|apiary|incubator|centrifuge|squeezer|fermenter|\bstill\b|carpenter|\bpress\b
+  - \bore\b|\bores\b|\bdust\b|nugget|sapling|flower|mushroom|\bcrop|\bseeds?\b|leaves|\bvines?\b|\bplant|cactus|\breeds?\b
+  - \bsand$|gravel|powder|\bice\b|\bsnow|slime|\btnt\b|redstone|\blamp|lantern|\btorch|glowstone

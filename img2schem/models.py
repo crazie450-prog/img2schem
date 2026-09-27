@@ -9,16 +9,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 AIR = "minecraft:air"
-
-# Block properties that exist in-game but never appear in blockstate asset files (they don't change
-# the model), so the extractor cannot see them. validate_state accepts these on any block.
-ASSET_INVISIBLE_PROPERTIES = frozenset({"waterlogged", "powered", "persistent", "distance"})
 
 # Semantic labels carried per compiled cell (SOW §5.3).
 LABELS = {0: "air", 1: "wall", 2: "window", 3: "door", 4: "roof", 5: "trim", 6: "floor", 7: "base", 8: "other"}
@@ -26,7 +22,7 @@ LABELS = {0: "air", 1: "wall", 2: "window", 3: "door", 4: "roof", 5: "trim", 6: 
 
 @dataclass
 class BlockGrid:
-    """``idx[X, Y, Z]`` indexes into ``palette``; index 0 is always ``minecraft:air``."""
+    """``idx[X, Y, Z]`` indexes into ``palette`` of ``name@meta`` blocks; index 0 is always ``minecraft:air``."""
 
     idx: np.ndarray
     palette: list[str] = field(default_factory=lambda: [AIR])
@@ -111,8 +107,6 @@ class InstanceInfo(BaseModel):
     mc_version: str | None = None
     loader: Loader = "unknown"
     loader_version: str | None = None
-    data_version: int | None = None
-    data_version_source: Literal["jar", "table", "unknown"] = "unknown"
     client_jar: str | None = None
     mods: list[ModInfo] = Field(default_factory=list)
     worldedit: bool = False
@@ -120,60 +114,175 @@ class InstanceInfo(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-# ---------------------------------------------------------------- palette (Phase 0 subset of §5.3)
+# ---------------------------------------------------------------- palette
+
+
+class WorldPalette(BaseModel):
+    """Block registry names of one world, read from its level.dat (Forge 1.7.10 ``FML.ItemData``).
+
+    Numeric IDs are recorded for reference only; schematics store names (see stages/export_schem.py).
+    """
+
+    world: str
+    level_dat: str
+    blocks: dict[str, int] = Field(default_factory=dict)  # registry name -> numeric id in that world
+
+    def validate_block(self, block: str) -> str | None:
+        """None if ``block`` exists in this world, else a human-readable reason."""
+        from img2schem.util.block import parse_block
+
+        try:
+            name, _ = parse_block(block)
+        except ValueError as e:
+            return str(e)
+        if name != AIR and name not in self.blocks:
+            return f"unknown block {name!r} (not registered in world {self.world!r})"
+        return None
+
 
 Shape = Literal[
-    "full_cube", "column", "stairs", "slab", "wall", "fence", "fence_gate", "pane", "door", "trapdoor", "other"
+    "full_cube", "stairs", "slab", "wall", "fence", "fence_gate", "pane", "door", "trapdoor", "log", "unknown"
 ]
 
 
-class PaletteBlock(BaseModel):
-    id: str
-    mod: str
-    source: str
-    shape: Shape = "other"
-    properties: dict[str, list[str]] = Field(default_factory=dict)
-    default_state: str
+class PaletteVariant(BaseModel):
+    """One placeable variant (block + metadata) as listed in NEI's item panel."""
+
+    block: str  # name@meta
+    meta: int
+    display: str
+    rgb: tuple[int, int, int] | None = None  # average icon color (None: no reliable icon)
+    hex: str | None = None
+    lab: tuple[float, float, float] | None = None
+    alpha: float | None = None  # transparent fraction of the icon
+    # Cube icons only: the lit top face, which shows the block's true texture color (the icon average above is
+    # darkened by the shaded sides), and its variance (mean CIE76 distance of face pixels from the mean).
+    face_rgb: tuple[int, int, int] | None = None
+    face_lab: tuple[float, float, float] | None = None
+    variance: float | None = None
+    icon: str | None = None  # path to the owner's local icon (never committed, SOW C16)
+    # "dark_icon": near-black icon (color may be a render failure); "excluded": matches palette/data/exclude.yaml;
+    # "infested": an infested block whose normal counterpart exists; "nbt_variant": the variant's meta can't be
+    # material for its shape (stairs 0/8, slab 0-7, log 0-3, door/trapdoor/fence gate 0), so it lives in NBT
     flags: list[str] = Field(default_factory=list)
 
 
-class PaletteReport(BaseModel):
-    blocks_per_mod: dict[str, int] = Field(default_factory=dict)
-    blocks_per_shape: dict[str, int] = Field(default_factory=dict)
-    code_rendered: list[str] = Field(default_factory=list)
-    excluded_per_flag: dict[str, int] = Field(default_factory=dict)
-    parse_errors: list[dict[str, str]] = Field(default_factory=list)
+class PaletteBlock(BaseModel):
+    """A block and its variants. A variant is *usable* for building when the block's shape is known, the
+    variant has a color, and it has no flags."""
+
+    name: str
+    mod: str
+    block_class: str
+    display: str | None = None
+    shape: Shape = "unknown"
+    # Slabs only: a separate block for the top half (Chisel's "<name>_top"); then all 16 metas are materials.
+    top_block: str | None = None
+    variants: list[PaletteVariant] = Field(default_factory=list)
+
+    def usable(self) -> list[PaletteVariant]:
+        if self.shape == "unknown":
+            return []
+        return [v for v in self.variants if v.rgb is not None and not v.flags]
+
+    def variant_for(self, meta: int) -> PaletteVariant | None:
+        """The material variant of a placed metadata value (orientation bits stripped per shape)."""
+        if self.shape == "slab" and self.top_block:
+            material = meta
+        else:
+            material = {"stairs": meta & 8, "slab": meta & 7, "log": meta & 3}.get(self.shape, meta)
+        by_meta = {v.meta: v for v in self.variants}
+        return by_meta.get(material) or by_meta.get(meta) or by_meta.get(0)
 
 
 class Palette(BaseModel):
+    """Every block of the instance with shape and per-variant colors (built from NEI dumps, D-016)."""
+
     version: int = 1
-    extractor_version: str
-    cache_key: str
-    instance_name: str | None = None
-    mc_version: str | None = None
+    source: str
+    key: str
     blocks: dict[str, PaletteBlock] = Field(default_factory=dict)
 
-    def validate_state(self, state: str) -> str | None:
-        """Return None if ``state`` is valid for this palette, else a human-readable reason (RP.17)."""
-        from img2schem.util.blockstate import parse_state
+    def color(self, block: str) -> tuple[int, int, int] | None:
+        from img2schem.util.block import parse_block
 
-        try:
-            block_id, props = parse_state(state)
-        except ValueError as e:
-            return str(e)
-        if block_id == AIR:
-            return None
-        blk = self.blocks.get(block_id)
-        if blk is None:
-            return f"unknown block {block_id!r} (not in the active instance's palette)"
-        for k, v in props.items():
-            if k not in blk.properties:
-                if k in ASSET_INVISIBLE_PROPERTIES:
-                    continue
-                return f"{block_id}: unknown property {k!r} (known: {sorted(blk.properties)})"
-            if v not in blk.properties[k]:
-                return f"{block_id}: {k}={v} not in {blk.properties[k]}"
-        return None
+        name, meta = parse_block(block)
+        blk = self.blocks.get(name)
+        v = blk.variant_for(meta) if blk else None
+        return (v.face_rgb or v.rgb) if v else None
+
+
+# ---------------------------------------------------------------- BuildSpec (SOW §5.3: v1 FacadeSpec + v2 fields)
+
+
+class Scale(BaseModel):
+    blocks_per_m: float = Field(default=1.0, gt=0)
+    storey_height_blocks: int = Field(default=4, ge=3)
+    ground_storey_height_blocks: int = Field(default=4, ge=3)
+
+
+class Facade(BaseModel):
+    width_m: float = Field(gt=0)
+    height_m: float | None = None  # estimate incl. roof; informational
+    storeys: int = Field(ge=1, le=30)
+    symmetric: bool = False
+
+
+class Footprint(BaseModel):
+    depth_ratio: float = Field(default=0.6, gt=0)
+    depth_m: float | None = None  # overrides depth_ratio
+
+
+class RoofSpec(BaseModel):
+    type: Literal["flat", "gable", "hip", "shed", "auto"] = "auto"
+    ridge: Literal["parallel", "perpendicular"] = "parallel"  # to the front facade
+    pitch: Literal["low", "medium", "steep"] = "medium"
+    overhang_blocks: int = Field(default=1, ge=0)
+
+
+class Element(BaseModel):
+    """An opening measured on the rectified facade. ``bbox`` = [x0, y0, x1, y1], normalized 0-1 over the wall
+    from the left edge to the right and from the eaves (0) down to the ground (1)."""
+
+    kind: str  # window | door | garage | balcony | porch | bay | chimney | ... (template handles window, door)
+    bbox: tuple[float, float, float, float]
+    storey: int | None = None
+    face: Literal["front", "left", "right", "back"] = "front"
+
+    @model_validator(mode="after")
+    def _bbox(self) -> Element:
+        x0, y0, x1, y1 = self.bbox
+        if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+            raise ValueError(f"bbox must satisfy 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, got {self.bbox}")
+        return self
+
+
+class MaterialSpec(BaseModel):
+    hint: str | None = None
+    rgb: tuple[int, int, int] | None = None
+    candidates: list[str] = Field(default_factory=list)
+    chosen: str | None = None  # a block (name@meta); fills the style slot
+    stairs: str | None = None  # optional explicit family members (else the palette family is used)
+    slab: str | None = None
+
+
+class BuildSpec(BaseModel):
+    """``spec.json``: the measured, human-editable description of the building."""
+
+    version: int = 2
+    input_mode: Literal["photo", "multiview", "describe", "manual"] = "manual"
+    building_type: str | None = None
+    scale: Scale = Scale()
+    facade: Facade
+    footprint: Footprint = Footprint()
+    roof: RoofSpec = RoofSpec()
+    elements: list[Element] = Field(default_factory=list)
+    materials: dict[str, MaterialSpec] = Field(default_factory=dict)  # wall, roof, trim, window, door, base, floor
+    style: dict[str, Any] = Field(default_factory=dict)
+    features: list[dict[str, Any]] = Field(default_factory=list)
+    unseen: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- validation
