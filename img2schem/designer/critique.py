@@ -31,7 +31,7 @@ def image_block(img: Image.Image, fmt: str = "PNG") -> dict[str, Any]:
     img = img.convert("RGB")
     img.thumbnail((MAX_EDGE, MAX_EDGE))
     buf = io.BytesIO()
-    img.save(buf, format=fmt)
+    img.save(buf, format=fmt, **({"quality": 90} if fmt == "JPEG" else {}))
     media = "image/png" if fmt == "PNG" else "image/jpeg"
     data = base64.standard_b64encode(buf.getvalue()).decode()
     return {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}
@@ -39,7 +39,7 @@ def image_block(img: Image.Image, fmt: str = "PNG") -> dict[str, Any]:
 
 def photo_brief(photos: list[Path], notes: str) -> list[dict[str, Any]]:
     """The design brief for a build from photos: the images, then what to do with them."""
-    blocks = [image_block(Image.open(p)) for p in photos]
+    blocks = [image_block(Image.open(p), "JPEG") for p in photos]  # photos: JPEG keeps them well under 5 MB
     many = len(photos) > 1
     text = (
         f"Recreate the building in {'these photos (the same building)' if many else 'this photo'} as a Minecraft "

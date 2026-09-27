@@ -32,10 +32,19 @@ class DesignResult:
     text: list[str] = field(default_factory=list)  # Claude's prose between tool calls
 
 
+IMAGE_TOKENS = 1600  # the API scales images to about 1.15 megapixels: ~1,600 tokens at most
+
+
 def _tokens(obj: Any) -> int:
-    """A generous token estimate for content we add to the conversation (images count ~1600)."""
-    s = json.dumps(obj, default=str)
-    return len(s) // 3 + 1600 * s.count('"type": "image"')
+    """A generous token estimate for content we add to the conversation: text at ~3 characters a token, each
+    image at its most (its base64 data is not text and is not counted)."""
+    if isinstance(obj, dict):
+        if obj.get("type") == "image":
+            return IMAGE_TOKENS
+        return sum(_tokens(v) for v in obj.values()) + len(obj)
+    if isinstance(obj, list | tuple):
+        return sum(_tokens(v) for v in obj)
+    return len(obj if isinstance(obj, str) else json.dumps(obj, default=str)) // 3 + 1
 
 
 def run_design(

@@ -314,3 +314,19 @@ def test_replay_of_the_owners_photo_session_prompt_v2():
     assert (r.stopped, r.turns, r.critique_passes) == ("finished", 21, 2)
     assert r.cost_usd == pytest.approx(0.7721, abs=1e-4)
     assert r.summary.startswith("Nothing was mirrored")
+
+
+def test_a_large_photo_counts_as_an_image_not_as_text(tmp_path):
+    """The owner's first UI design stopped at once: a big photo's base64 was counted as text (~1M tokens)."""
+    import numpy as np
+    from PIL import Image
+
+    from img2schem.designer.critique import photo_brief
+    from img2schem.designer.session import IMAGE_TOKENS, _tokens
+
+    p = tmp_path / "big.png"
+    Image.fromarray(np.random.default_rng(0).integers(0, 255, (3000, 4000, 3), dtype=np.uint8)).save(p)
+    brief = photo_brief([p], "")
+    assert brief[0]["source"]["media_type"] == "image/jpeg" and len(brief[0]["source"]["data"]) < 5_000_000
+    assert IMAGE_TOKENS <= _tokens(brief) < IMAGE_TOKENS + 1000
+    assert worst_case(["claude-opus-5-5", "claude-opus-5"], _tokens(brief) + 40_000, 32000) < 1.2
