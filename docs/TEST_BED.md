@@ -78,4 +78,5 @@ should be resolved (not `id:<n>`) and the counts should match.
 | Check | Result / notes |
 |---|---|
 | `img2schem serve --open`: builds list, 3D view, ops editor, design/revise with live progress, undo/redo, export (D-038) | ✅ owner, Windows: a design run from the UI exported a `.schematic` that loaded in game (after fixes for a busy port, the missing WebSocket library and the photo cost estimate) |
+| Stop a design or revision from the UI; click a block (block, state, op); ops list hide/move/delete (D-039). Checked here in headless Chromium on house 3: pick, highlight, hide, jump to ops.json, delete + undo | ⏳ owner: try Stop during a real run |
 

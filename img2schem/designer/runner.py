@@ -32,6 +32,7 @@ class Callbacks:
     tool: Callable[[str, Any, ToolResult], None] | None = None
     critique: Callable[[int], None] | None = None  # a critique pass starts
     changed: Callable[[DesignState], None] | None = None  # the build changed (after a successful edit tool)
+    cancelled: Callable[[], bool] | None = None  # the owner pressed stop (checked between turns)
 
 
 MUTATING = ("replace_op", "delete_op", "set_style")
@@ -43,6 +44,11 @@ class RunResult:
     state: DesignState
     ops_path: Path  # in the run folder
     version: int | None  # the build's new version (None: nothing changed)
+
+
+def _stopped(instruction: str, result: DesignResult) -> str:
+    """A run the owner stopped still keeps what it built (it is paid for); the history says it was stopped."""
+    return f"{instruction} (stopped)" if result.stopped == "cancelled" else instruction
 
 
 def make_transport(settings: Settings, out: Path, replay: Path | None) -> Transport:
@@ -74,7 +80,7 @@ def _run(state: DesignState, brief: str | list[dict[str, Any]], *, settings: Set
     try:
         result = run_design(state, brief, system_prompt(state.palette), tool_specs(render=render), settings.claude,
                             limit, transport, budget, cb.progress, cb.warning, critique, critique_passes,
-                            on_tool)  # fmt: skip
+                            on_tool, cb.cancelled)  # fmt: skip
     except Exception as e:  # keep what was built before an API or network failure
         ops_path.write_text(state.doc.model_dump_json(by_alias=True, indent=1), encoding="utf-8")
         hint = ("\nhint: set ANTHROPIC_WORKSPACE_ID in .env (see .env.example), or use a key made inside a "
@@ -118,8 +124,9 @@ def design(name: str, prompt: str, photos: list[Path], *, settings: Settings, pa
     version = None
     if state.doc.ops:
         hist = History(builds / f"{name}.ops.json")
+        instruction = prompt or ", ".join(Path(p).name for p in (sources or photos))
         version = hist.commit(ops_path.read_text(encoding="utf-8"), kind="design",
-                              instruction=prompt or ", ".join(Path(p).name for p in (sources or photos)), run=str(out),
+                              instruction=_stopped(instruction, result), run=str(out),
                               cost_usd=round(result.cost_usd, 4), summary=result.summary)  # fmt: skip
     return RunResult(result, state, ops_path, version)
 
@@ -153,6 +160,6 @@ def edit(ops_file: Path, instruction: str, *, settings: Settings, palette: Palet
     after = state.doc.model_dump_json(by_alias=True, indent=1)
     version = None
     if after != before:
-        version = hist.commit(after, kind="edit", instruction=instruction, run=str(out),
+        version = hist.commit(after, kind="edit", instruction=_stopped(instruction, result), run=str(out),
                               cost_usd=round(result.cost_usd, 4), summary=result.summary)  # fmt: skip
     return RunResult(result, state, ops_path, version)

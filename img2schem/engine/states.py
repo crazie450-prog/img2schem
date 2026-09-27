@@ -72,3 +72,17 @@ def transform_meta(shape: str, meta: int, turns: int, mirror: str | None = None)
     if shape == "log" and turns % 2 and meta & 12 in (4, 8):
         return meta ^ 12  # x axis <-> z axis
     return meta
+
+
+def describe(shape: str, meta: int) -> str:
+    """The orientation a block's metadata means, in words (for the UI), or "" for blocks without one."""
+    if shape == "stairs":
+        d = next(k for k, v in STAIRS_ASCEND.items() if v == meta & 3)
+        return f"ascends {d}" + (", upside-down" if meta & 4 else "")
+    if shape == "door":
+        if meta & 8:
+            return "upper half, hinge " + ("right" if meta & 1 else "left")
+        return f"lower half, placed facing {next(k for k, v in DOOR_FACING.items() if v == meta & 3)}"
+    if shape == "log":
+        return {0: "upright", 4: "along x (east-west)", 8: "along z (north-south)"}.get(meta & 12, "bark on all sides")
+    return ""

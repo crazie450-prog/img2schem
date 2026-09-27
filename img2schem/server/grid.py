@@ -1,5 +1,6 @@
 """The compiled build as the 3D viewer draws it: one entry per block (color, shape boxes, opacity) and only the
-cells that can be seen (a block buried on all six sides by opaque full blocks is left out)."""
+cells that can be seen (a block buried on all six sides by opaque full blocks is left out), each with the op
+that placed it."""
 
 from __future__ import annotations
 
@@ -7,7 +8,9 @@ from typing import Any
 
 import numpy as np
 
+from img2schem.engine.compiler import Compiled
 from img2schem.engine.materials import guess_shape
+from img2schem.engine.states import describe
 from img2schem.models import AIR, BlockGrid, Palette
 from img2schem.stages.preview import block_color, block_parts
 from img2schem.util.block import parse_block
@@ -18,7 +21,7 @@ POST = [(0.375, 0.0, 0.375, 0.625, 1.0, 0.625)]
 
 
 def _entry(block: str, palette: Palette | None) -> dict[str, Any]:
-    name, _ = parse_block(block)
+    name, meta = parse_block(block)
     blk = palette.blocks.get(name) if palette else None
     shape = blk.shape if blk else guess_shape(name)
     color = (palette.color(block) if palette else None) or block_color(block)
@@ -27,10 +30,11 @@ def _entry(block: str, palette: Palette | None) -> dict[str, Any]:
     if parts is None and shape in ("fence", "wall"):
         parts = POST
     return {"name": block, "shape": shape, "color": hex_color(color), "opacity": 0.45 if glass else 1.0,
-            "parts": parts}  # fmt: skip
+            "parts": parts, "state": describe(shape, meta)}  # fmt: skip
 
 
-def grid_payload(grid: BlockGrid, palette: Palette | None) -> dict[str, Any]:
+def grid_payload(grid: BlockGrid, palette: Palette | None, op_index: np.ndarray | None = None) -> dict[str, Any]:
+    """``cells`` is flat: x, y, z, block, op (the op's index in the build, -1 if none) for each cell."""
     entries = [_entry(b, palette) if b != AIR else {"name": AIR} for b in grid.palette]
     opaque_ids = np.array([b != AIR and e.get("parts") is None and e.get("opacity", 1) == 1
                            and e.get("shape") not in SEE_THROUGH for b, e in zip(grid.palette, entries, strict=True)])
@@ -39,11 +43,19 @@ def grid_payload(grid: BlockGrid, palette: Palette | None) -> dict[str, Any]:
                & solid[1:-1, 1:-1, :-2] & solid[1:-1, 1:-1, 2:])  # fmt: skip
     cells = np.argwhere((grid.idx != 0) & ~covered)
     ids = grid.idx[cells[:, 0], cells[:, 1], cells[:, 2]]
+    ops = op_index[cells[:, 0], cells[:, 1], cells[:, 2]] if op_index is not None else np.full(len(cells), -1)
     counts = grid.counts()
     return {
         "size": list(grid.shape),
         "blocks": entries,
-        "cells": np.column_stack([cells, ids]).astype(int).reshape(-1).tolist(),  # x, y, z, block, ...
+        "cells": np.column_stack([cells, ids, ops]).astype(int).reshape(-1).tolist(),
         "total": grid.nonair(),
         "counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
     }
+
+
+def compiled_payload(c: Compiled, palette: Palette | None) -> dict[str, Any]:
+    """``grid_payload`` plus the ops (by index) and ``origin``: a cell's design coordinates are its x, y, z minus
+    ``origin``."""
+    return {**grid_payload(c.grid, palette, c.op_index), "ops": [{"id": s.id, "label": s.label} for s in c.summaries],
+            "origin": list(c.origin)}  # fmt: skip

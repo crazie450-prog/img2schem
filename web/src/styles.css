@@ -56,3 +56,24 @@ aside.right nav button.sel { color: var(--text); box-shadow: inset 0 -2px var(--
 .counts { width: 100%; border-collapse: collapse; font-size: 13px; }
 .counts td { padding: 4px 16px; border-bottom: 1px solid var(--line); }
 .counts td:nth-child(2), .counts td:nth-child(3) { text-align: right; color: var(--muted); white-space: nowrap; }
+button.quiet { background: var(--panel2); color: var(--text); font-weight: 400; }
+.working { margin-top: 0; justify-content: space-between; }
+button.stop { background: var(--err); color: #1a0d0d; }
+.pick { position: absolute; top: 16px; right: 16px; width: 280px; background: rgba(22, 24, 29, .92);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 16px 16px; font-size: 13px; }
+.pick > b { display: block; margin: 0 24px 4px 0; word-break: break-all; }
+.pick .close { position: absolute; top: 8px; right: 8px; margin: 0; }
+.ops { overflow: auto; font-size: 13px; }
+.ops li { display: flex; gap: 8px; align-items: center; padding: 4px 16px; border-bottom: 1px solid var(--line);
+  cursor: pointer; }
+.ops li:hover { background: var(--panel2); } .ops li.sel { background: #243349; }
+.ops li.hidden .name, .ops li.hidden .kind { opacity: .4; }
+.ops li.hint { display: block; cursor: default; border: none; padding: 8px 16px; }
+.ops li.hint:hover { background: none; }
+.ops .eye { background: none; color: var(--accent); padding: 0 4px; font-weight: 400; }
+.ops .kind { color: var(--muted); width: 72px; flex: none; overflow: hidden; text-overflow: ellipsis; }
+.ops .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops .name small { color: var(--muted); margin-left: 8px; }
+.ops .acts { display: flex; gap: 4px; visibility: hidden; }
+.ops li:hover .acts, .ops li.sel .acts { visibility: visible; }
+.ops .acts button { background: var(--panel2); color: var(--text); padding: 0 6px; font-weight: 400; }

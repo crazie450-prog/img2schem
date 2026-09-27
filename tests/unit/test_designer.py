@@ -115,7 +115,7 @@ def test_budget_warns_then_stops_before_passing_the_limit():
              "cache_read_input_tokens": 0}  # $1.00 a turn at $4 / $20 per million
     turns = [response([tool(i, "get_state_summary", {})], usage=heavy) for i in range(10)]
     state, t, r = design(turns)
-    assert r.stopped == "budget" and "--budget large" in r.warnings[-1]
+    assert r.stopped == "budget" and "large budget" in r.warnings[-1]
     assert "past the default budget's $1.00 warning" in r.warnings[0]
     worst = worst_case(["claude-opus-5-5", "claude-opus-5"], 120_000, 32000)
     assert r.cost_usd <= BUDGET.stop and r.cost_usd + worst > BUDGET.stop
@@ -330,3 +330,26 @@ def test_a_large_photo_counts_as_an_image_not_as_text(tmp_path):
     assert brief[0]["source"]["media_type"] == "image/jpeg" and len(brief[0]["source"]["data"]) < 5_000_000
     assert IMAGE_TOKENS <= _tokens(brief) < IMAGE_TOKENS + 1000
     assert worst_case(["claude-opus-5-5", "claude-opus-5"], _tokens(brief) + 40_000, 32000) < 1.2
+
+
+def test_stop_takes_effect_between_turns():
+    state = new_state()
+    t = Scripted(synthetic.TURNS)
+    r = run_design(state, "a watchtower", "SYSTEM", tool_specs(), SETTINGS, BUDGET, t,
+                   cancelled=lambda: len(t.requests) >= 1)  # fmt: skip
+    assert (r.stopped, r.turns) == ("cancelled", 1)  # the turn in flight was applied, no new turn was sent
+    assert [o.id for o in state.doc.ops] == ["floors", "walls"]
+    assert r.cost_usd == pytest.approx(usage_cost("claude-opus-5-5", synthetic.USAGE))
+
+
+def test_a_stopped_design_keeps_what_it_built_as_a_version(tmp_path):
+    from img2schem.designer import runner
+
+    built = []
+    cb = runner.Callbacks(changed=lambda s: built.append(len(s.doc.ops)), cancelled=lambda: bool(built))
+    run = runner.design("tower", "a watchtower", [], settings=Settings(), palette=None, world=None,
+                        out=tmp_path / "out", builds=tmp_path / "builds",
+                        replay=synthetic.write(tmp_path / "s.jsonl"), cb=cb)  # fmt: skip
+    assert (run.result.stopped, run.version) == ("cancelled", 1)
+    log = json.loads((tmp_path / "builds" / "tower.history" / "log.json").read_text())
+    assert log["versions"][0]["instruction"] == "a watchtower (stopped)"

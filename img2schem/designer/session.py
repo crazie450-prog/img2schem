@@ -22,7 +22,7 @@ BETAS = ("thinking-display-updates-2026-08-18", "thinking-binding-controls-2026-
 
 @dataclass
 class DesignResult:
-    stopped: str  # finished | end_turn | budget | turn_cap | refusal
+    stopped: str  # finished | end_turn | budget | turn_cap | refusal | cancelled
     summary: str | None
     turns: int
     cost_usd: float
@@ -61,9 +61,12 @@ def run_design(
     critique: Callable[[int], list[dict[str, Any]]] | None = None,
     critique_passes: int = 0,
     on_tool: Callable[[str, Any, ToolResult], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> DesignResult:
     """``critique(n)`` gives the content of critique pass n (RC.1): after each ``finish``, up to
-    ``critique_passes`` times, it is sent to Claude, which fixes what it finds and finishes again."""
+    ``critique_passes`` times, it is sent to Claude, which fixes what it finds and finishes again.
+    ``cancelled()`` is asked before each turn: a stop takes effect once the turn in flight has been applied, so
+    every cost is known."""
     guard = BudgetGuard(budget, budget_name)
     messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
     result = DesignResult("turn_cap", None, 0, 0.0)
@@ -76,6 +79,9 @@ def run_design(
             on_warning(msg)
 
     for turn in range(settings.turn_cap):
+        if cancelled and cancelled():
+            result.stopped = "cancelled"
+            break
         try:
             guard.check(worst_case([m for m in (settings.model, settings.fallback_model) if m], context,
                                    settings.max_tokens))

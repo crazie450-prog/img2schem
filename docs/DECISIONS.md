@@ -471,3 +471,22 @@ Entries marked **verify** need a check on the owner's machine or test bed.
   only; `web/` holds the source.
 - **Not yet** (next slices): streaming block animation (RU.3), op history tree and op highlighting, material
   slots and palette browser, a stop button, the reference photo overlay, themes, the Playwright smoke test.
+
+### D-039 Web UI, second slice: stop, block picking, the ops list
+- **Stop** (RU.8, the footer's stop button): the page sends `{"action": "stop"}` on the run's WebSocket (closing
+  the page does the same). The design loop checks before each turn, so a stop takes effect once the turn in
+  flight has come back and its tool calls have been applied. We don't abort the stream mid-turn: the API reports
+  a turn's output tokens only at its end, so a cut-off turn's cost (up to max_tokens of output, about $0.64) could
+  not be counted against the budget. **A stopped run keeps what it built as a new version** (it is paid for),
+  marked "(stopped)" in the history; Undo discards it. `DesignResult.stopped` is `cancelled`.
+- **Picking** (RU.4): each visible cell in the viewer grid carries the index of the top-level op that placed it
+  (the compiler's `op_index`), and the payload lists the ops and the grid's origin. Clicking a block shows its
+  block id, what its metadata means (stairs, doors, logs: `engine/states.describe`), its design coordinates and
+  its op, with "Show in ops.json" (selects the op in the editor) and "Hide op". A drag that orbits is not a click.
+- **Ops list** (the SOW's op history tree, flat for now: ops have no nesting beyond `define`): each op with
+  show/hide, build earlier/later and delete. Hiding recompiles on the server without those ops
+  (`GET .../grid?hide=a,b`) and only changes the preview. Moving and deleting save a new version, like a save in
+  the editor, with the change as its history note; an op another one needs (a `define`, a `vary` target) can't
+  be deleted: the save fails with the compile error. Selecting an op, from the list or by clicking one of its
+  blocks, tints its visible blocks in the accent color.
+- **Not yet:** drag to reorder, renaming, and grouping by `group` in the list; the other items of D-038's list.

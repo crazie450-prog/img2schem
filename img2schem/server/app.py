@@ -29,7 +29,7 @@ from img2schem.engine.ops import OpsDoc
 from img2schem.instance.discover import resolve_instance
 from img2schem.instance.world import read_world_palette, resolve_world
 from img2schem.models import InstanceInfo, Palette, WorldPalette
-from img2schem.server.grid import grid_payload
+from img2schem.server.grid import compiled_payload
 from img2schem.stages.build import BuildFailed, build_outputs
 from img2schem.stages.ingest import IngestError, ingest
 
@@ -107,6 +107,7 @@ def build_info(ctx: Context, name: str) -> dict[str, Any]:
 
 class OpsBody(BaseModel):
     text: str
+    instruction: str = "edited in the ops editor"  # the history's note for this version
 
 
 def create_app(builds: Path = Path("builds"), out: Path = Path("out")) -> FastAPI:
@@ -143,18 +144,22 @@ def create_app(builds: Path = Path("builds"), out: Path = Path("out")) -> FastAP
         return build_info(ctx, name)
 
     @app.get("/api/builds/{name}/grid")
-    def build_grid(name: str) -> dict[str, Any]:
+    def build_grid(name: str, hide: str = "") -> dict[str, Any]:
+        """The compiled build; ``hide`` (comma-separated op ids) previews it without those ops."""
         ops_file = ctx.ops_file(name)
         if not ops_file.is_file():
             raise HTTPException(404, f"no build {name!r}")
+        hidden = set(filter(None, hide.split(",")))
         try:
-            state = DesignState(OpsDoc.model_validate_json(ops_file.read_text(encoding="utf-8")), ctx.palette(),
-                                ctx.settings.budgets)  # fmt: skip
+            doc = OpsDoc.model_validate_json(ops_file.read_text(encoding="utf-8"))
+            doc = doc.model_copy(update={"ops": [o for o in doc.ops if o.id not in hidden]})
+            state = DesignState(doc, ctx.palette(), ctx.settings.budgets)
         except (ValueError, CompileError) as e:
             raise HTTPException(422, str(e)) from None
         if state.compiled is None:
-            return {"size": [0, 0, 0], "blocks": [], "cells": [], "total": 0, "counts": {}}
-        return grid_payload(state.compiled.grid, ctx.palette())
+            return {"size": [0, 0, 0], "blocks": [], "cells": [], "total": 0, "counts": {}, "ops": [],
+                    "origin": [0, 0, 0]}  # fmt: skip
+        return compiled_payload(state.compiled, ctx.palette())
 
     @app.put("/api/builds/{name}/ops")
     def build_save(name: str, body: OpsBody) -> dict[str, Any]:
@@ -179,7 +184,7 @@ def create_app(builds: Path = Path("builds"), out: Path = Path("out")) -> FastAP
         hist = History(ops_file)
         hist.ensure_started()
         if not ops_file.is_file() or text != ops_file.read_text(encoding="utf-8"):
-            hist.commit(text, kind="manual", instruction="edited in the ops editor")
+            hist.commit(text, kind="manual", instruction=body.instruction[:200])
         return build_info(ctx, name)
 
     @app.post("/api/builds/{name}/{step}")
@@ -204,7 +209,7 @@ def create_app(builds: Path = Path("builds"), out: Path = Path("out")) -> FastAP
             while True:
                 msg = await websocket.receive_json()
                 await run_job(ctx, websocket, msg)
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError):  # RuntimeError: it closed while a run was streaming
             pass
 
     @app.get("/", response_class=HTMLResponse)
@@ -236,16 +241,31 @@ def export(ctx: Context, name: str, copy: bool) -> dict[str, Any]:
 
 async def run_job(ctx: Context, websocket: WebSocket, msg: dict[str, Any]) -> None:
     """Run a design or edit in a worker thread and stream its events:
-    {type: started | text | tool | applied | grid | critique | warning | done | exported | error}."""
+    {type: started | text | tool | applied | grid | critique | warning | done | exported | error}.
+    A {"action": "stop"} message, or the page going away, stops the run after the turn in flight."""
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+    stop = threading.Event()
 
     def emit(event: dict[str, Any] | None) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, event)
 
+    async def listen() -> None:
+        while True:
+            try:
+                m = await websocket.receive_json()
+            except ValueError:
+                continue
+            except (WebSocketDisconnect, RuntimeError):  # the page closed: don't keep paying for the run
+                stop.set()
+                return
+            if isinstance(m, dict) and m.get("action") == "stop" and not stop.is_set():
+                stop.set()
+                emit({"type": "stopping"})
+
     def worker() -> None:
         try:
-            _work(ctx, msg, emit)
+            _work(ctx, msg, emit, stop.is_set)
         except (runner.RunError, IngestError, ValueError) as e:
             emit({"type": "error", "message": str(e)})
         except HTTPException as e:
@@ -256,11 +276,18 @@ async def run_job(ctx: Context, websocket: WebSocket, msg: dict[str, Any]) -> No
             emit(None)
 
     threading.Thread(target=worker, daemon=True).start()
+    listener = asyncio.create_task(listen())
+    connected = True
     while (event := await queue.get()) is not None:
-        await websocket.send_json(event)
+        if connected:
+            try:
+                await websocket.send_json(event)
+            except (WebSocketDisconnect, RuntimeError):
+                connected = False  # keep draining until the worker has stopped
+    listener.cancel()
 
 
-def _work(ctx: Context, msg: dict[str, Any], emit: Any) -> None:
+def _work(ctx: Context, msg: dict[str, Any], emit: Any, cancelled: Any = None) -> None:
     action, name = msg.get("action"), str(msg.get("name") or "")
     ops_file = ctx.ops_file(name)
     budget = str(msg.get("budget") or "default")
@@ -273,7 +300,7 @@ def _work(ctx: Context, msg: dict[str, Any], emit: Any) -> None:
         now = time.monotonic()
         if state.compiled is not None and now - last[0] >= GRID_EVERY_S:
             last[0] = now
-            emit({"type": "grid", "grid": grid_payload(state.compiled.grid, palette)})
+            emit({"type": "grid", "grid": compiled_payload(state.compiled, palette)})
 
     def tool(tool_name: str, args: Any, r: Any) -> None:
         emit({"type": "applied", "tool": tool_name, "id": args.get("id") if isinstance(args, dict) else None,
@@ -281,7 +308,8 @@ def _work(ctx: Context, msg: dict[str, Any], emit: Any) -> None:
 
     cb = runner.Callbacks(progress=lambda kind, text: emit({"type": kind, "text": text}),
                           warning=lambda m: emit({"type": "warning", "message": m}), tool=tool,
-                          critique=lambda n: emit({"type": "critique", "n": n}), changed=changed)  # fmt: skip
+                          critique=lambda n: emit({"type": "critique", "n": n}), changed=changed,
+                          cancelled=cancelled)  # fmt: skip
     replay = Path(msg["replay"]) if msg.get("replay") else None
     emit({"type": "started", "action": action, "model": ctx.settings.claude.model, "budget": budget})
     if action == "design":
@@ -306,7 +334,7 @@ def _work(ctx: Context, msg: dict[str, Any], emit: Any) -> None:
         raise ValueError(f"unknown action {action!r}")
     r = run.result
     if run.state.compiled is not None:
-        emit({"type": "grid", "grid": grid_payload(run.state.compiled.grid, palette)})
+        emit({"type": "grid", "grid": compiled_payload(run.state.compiled, palette)})
     done = {"type": "done", "stopped": r.stopped, "turns": r.turns, "cost_usd": round(r.cost_usd, 4),
             "summary": r.summary, "version": run.version, "warnings": r.warnings}  # fmt: skip
     emit(done)

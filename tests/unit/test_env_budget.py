@@ -38,11 +38,11 @@ def test_guard_warns_once_and_stops_before_passing_the_limit():
     assert "past" in (g.add(0.6) or "")
     assert g.add(0.5) is None  # warned once
     g.check(2.8)  # 1.7 + 2.8 = 4.5: still fits
-    with pytest.raises(BudgetExceeded, match="--budget large"):
+    with pytest.raises(BudgetExceeded, match="large budget"):
         g.check(3.5)  # could reach 5.2
     with pytest.raises(BudgetExceeded) as e:
         BudgetGuard(BudgetUSD(warn=5, stop=10), "large").check(11)
-    assert "--budget large" not in str(e.value)
+    assert "allows up to" not in str(e.value)
 
 
 def test_review_sheet(tmp_path):

@@ -26,7 +26,7 @@ class BudgetGuard:
             raise BudgetExceeded(
                 f"stopping: ${self.spent:.2f} spent, and the next call could cost up to ${worst_case_usd:.2f}, "
                 f"passing the {self.name} budget's ${self.limit.stop:.2f} limit"
-                + ("" if self.name == "large" else " (use --budget large for up to $10)")
+                + ("" if self.name == "large" else " (the large budget allows up to $10)")
             )
 
     def add(self, cost_usd: float) -> str | None:
