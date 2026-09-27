@@ -77,5 +77,5 @@ should be resolved (not `id:<n>`) and the counts should match.
 
 | Check | Result / notes |
 |---|---|
-| `img2schem serve --open`: builds list, 3D view, ops editor, design/revise with live progress, undo/redo, export (D-038) | ⏳ owner: first run on the owner's machine |
+| `img2schem serve --open`: builds list, 3D view, ops editor, design/revise with live progress, undo/redo, export (D-038) | ✅ owner, Windows: a design run from the UI exported a `.schematic` that loaded in game (after fixes for a busy port, the missing WebSocket library and the photo cost estimate) |
 
